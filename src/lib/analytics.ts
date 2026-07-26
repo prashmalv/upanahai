@@ -195,6 +195,24 @@ export async function getTrend(days: Window) {
   return out;
 }
 
+/**
+ * Products currently withheld from every listing, and why.
+ *
+ * Surfaced on the dashboard because a hidden product is lost revenue with a
+ * fixable cause — usually "we don't have a picture of this that we're allowed to
+ * publish under this brand". Silently hiding them would leave the operator
+ * wondering where the catalog went.
+ */
+export async function getHiddenProducts() {
+  const rows = await prisma.product.findMany({
+    where: { imageOk: false },
+    select: { slug: true, brand: true, name: true, imageNote: true, imageCheckedAt: true },
+    orderBy: { brand: "asc" }
+  });
+  const total = await prisma.product.count();
+  return { hidden: rows, total, visible: total - rows.length };
+}
+
 /** Brand reputation from the platform's own reviews, not the retailers'. */
 export async function getBrandSentiment() {
   const rows = await prisma.brandFeedback.findMany({

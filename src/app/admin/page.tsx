@@ -8,11 +8,12 @@ import {
   getTrend,
   getBrandSentiment,
   getProductInterest,
+  getHiddenProducts,
   type Window
 } from "@/lib/analytics";
 import { StatTile, BarList, Sparkline } from "@/components/admin/Charts";
 import { LogoutButton } from "@/components/LogoutButton";
-import { ShieldCheck, Users, Search, MessageSquare, TrendingUp } from "lucide-react";
+import { ShieldCheck, Users, Search, MessageSquare, TrendingUp, ImageOff } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -34,13 +35,14 @@ export default async function AdminPage({
     ? Number(searchParams.days)
     : 30) as Window;
 
-  const [overview, geo, demand, trend, brands, interest] = await Promise.all([
+  const [overview, geo, demand, trend, brands, interest, catalog] = await Promise.all([
     getOverview(days),
     getGeography(days),
     getDemand(days),
     getTrend(days),
     getBrandSentiment(),
-    getProductInterest(days)
+    getProductInterest(days),
+    getHiddenProducts()
   ]);
 
   const engagementRate =
@@ -290,6 +292,63 @@ export default async function AdminPage({
           </div>
         )}
       </div>
+
+      {/* catalog health */}
+      <h2 className="mt-12 flex items-center gap-2 text-lg font-black text-slate-900">
+        <ImageOff size={18} className="text-indigo-600" /> Catalog health
+      </h2>
+      <p className="mt-1 text-sm text-slate-500">
+        {catalog.visible} of {catalog.total} products are publishable. A product is
+        withheld from every listing when its image can&apos;t be shown, or can&apos;t be
+        published under the brand it&apos;s listed against — showing a rival&apos;s shoe on a
+        brand&apos;s listing is the kind of thing that brand notices first.
+      </p>
+
+      {catalog.hidden.length === 0 ? (
+        <p className="mt-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800 ring-1 ring-emerald-200">
+          Every product has a publishable image.
+        </p>
+      ) : (
+        <div className="mt-4 card overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="p-3">Product</th>
+                <th className="p-3">Why it&apos;s withheld</th>
+                <th className="p-3">Checked</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {catalog.hidden.map((h) => (
+                <tr key={h.slug}>
+                  <td className="p-3 font-semibold text-slate-900">
+                    {h.brand} {h.name}
+                  </td>
+                  <td className="p-3 text-slate-600">{h.imageNote || "—"}</td>
+                  <td className="p-3 whitespace-nowrap text-xs text-slate-400">
+                    {h.imageCheckedAt
+                      ? h.imageCheckedAt.toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "short"
+                        })
+                      : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="border-t border-slate-100 p-4 text-xs leading-relaxed text-slate-500">
+            <strong className="text-slate-700">To bring these back:</strong> supply a
+            first-party product image (from the brand or the retailer feed), update{" "}
+            <code className="rounded bg-slate-100 px-1">imageUrl</code>, then run{" "}
+            <code className="rounded bg-slate-100 px-1">
+              npx tsx prisma/audit-images.ts --hide
+            </code>
+            . Anything that passes is un-hidden automatically. A photo with no visible
+            brand mark is fine; a competitor&apos;s logo is not.
+          </p>
+        </div>
+      )}
 
       <p className="mt-8 rounded-xl bg-slate-50 p-4 text-xs leading-relaxed text-slate-500">
         <strong className="text-slate-700">How these numbers are produced:</strong> unique
