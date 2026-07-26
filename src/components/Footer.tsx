@@ -43,6 +43,7 @@ export function Footer() {
           <p className="mb-3 text-sm font-semibold text-slate-900">Tools</p>
           <ul className="space-y-2 text-sm text-slate-500">
             <li><Link href="/foot-scan" className="hover:text-brand-600">Foot Fit Scan</Link></li>
+            <li><Link href="/size-chart" className="hover:text-brand-600">Size chart</Link></li>
             <li><Link href="/try-on" className="hover:text-brand-600">Virtual Try-On</Link></li>
             <li><Link href="/match" className="hover:text-brand-600">Find by Photo</Link></li>
             <li><Link href="/health" className="hover:text-brand-600">Health Tracker</Link></li>

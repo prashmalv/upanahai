@@ -3,7 +3,7 @@ import Image from "next/image";
 import { getSession } from "@/lib/auth";
 import { SITE } from "@/lib/seo";
 import {
-  Heart, ScanLine, User2, Activity, Star, MessageSquare, ShieldCheck
+  Heart, ScanLine, User2, Activity, Star, MessageSquare, ShieldCheck, Ruler
 } from "lucide-react";
 
 export async function Navbar() {
@@ -35,6 +35,7 @@ export async function Navbar() {
           <Link href="/search?gender=women" className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Women</Link>
           <Link href="/search?gender=kids" className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Kids</Link>
           <Link href="/foot-scan" className="flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"><ScanLine size={15} /> Fit Scan</Link>
+          <Link href="/size-chart" className="flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"><Ruler size={15} /> Size chart</Link>
           <Link href="/brands" className="flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"><Star size={15} /> Brands</Link>
           <Link href="/community" className="flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"><MessageSquare size={15} /> Community</Link>
           <Link href="/health" className="flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"><Activity size={15} /> Health</Link>

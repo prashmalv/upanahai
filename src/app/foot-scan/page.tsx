@@ -41,7 +41,7 @@ const GUIDANCE = [
   "Stand up — a weight-bearing foot is 2-5 mm longer than a sitting one, and shoe charts assume standing.",
   "Bare foot or a thin sock. A thick sock adds millimetres you won't have in the shoe.",
   "Put your heel against a wall, with the sheet flat on hard floor (not carpet).",
-  "Hold the phone directly above the foot, screen level — tilting the camera is the single biggest source of error.",
+  "Hold the phone directly above the foot, screen level. Tilt is the single biggest source of error, so the on-screen level has to go green before the shutter unlocks.",
   "Get the whole sheet and the whole foot inside the frame, in even light with no shadow across the toes.",
   "Measure both feet and use the longer one. Most people differ by 3-6 mm.",
   "Measure at the end of the day, when feet are at their largest."
@@ -237,12 +237,15 @@ export default function FootScanPage() {
                     : "Keep the camera directly above your foot, with the whole sheet in frame."}
                 </span>
               </div>
+              {/* requireLevel only here: tilt dominates the error for foot
+                  measurement, but is irrelevant for shoe photo matching. */}
               <CameraCapture
                 onCapture={(dataUrl) =>
                   mode === "precise" ? setPhoto(dataUrl) : post({ imageDataUrl: dataUrl })
                 }
                 label={mode === "precise" ? "Take photo to measure" : "Scan foot"}
                 aspect="aspect-square"
+                requireLevel
               />
             </>
           )}
