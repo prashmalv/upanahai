@@ -1,0 +1,286 @@
+// Upanah.AI data model
+// Dev uses SQLite for zero-config. For Azure/Hostinger production, change
+// provider to "postgresql" or "mysql" and update DATABASE_URL.
+
+generator client {
+  provider = "prisma-client-js"
+  // debian targets cover Azure App Service (Linux) — "native" alone breaks if the
+  // build container's OpenSSL differs from the runtime container's.
+  binaryTargets = ["native", "debian-openssl-1.1.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  name        String?
+  passwordHash String
+  // persona: general | senior | sports | kids-parent
+  persona     String   @default("general")
+  // role: user | brand | admin  — admin unlocks /admin analytics
+  role        String   @default("user")
+  // brand representatives get their replies badged in the community
+  brandName   String   @default("")
+  // Where the user registered from. Collected at signup rather than guessed
+  // from IP, so the analytics are honest about their own source.
+  city        String   @default("")
+  state       String   @default("")
+  country     String   @default("IN")
+  lastLoginAt DateTime?
+  createdAt   DateTime @default(now())
+
+  wishlist    Wishlist[]
+  feedback    Feedback[]
+  healthLogs  HealthLog[]
+  footProfile FootProfile?
+  brandFeedback BrandFeedback[]
+  questions   Question[]
+  answers     Answer[]
+  searchLogs  SearchLog[]
+  events      Event[]
+
+  @@index([role])
+  @@index([state])
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  brand       String
+  name        String
+  slug        String   @unique
+  // men | women | kids | unisex
+  gender      String
+  // sports | running | walking | casual | formal | sandals | orthopedic | school
+  category    String
+  description String
+  imageUrl    String
+  colorway    String   @default("")
+  basePrice   Int      // MRP in INR
+  rating      Float    @default(0)
+  reviewCount Int      @default(0)
+  // comma-separated tags used by the recommender & photo-matcher
+  tags        String   @default("")
+  // support features: arch, cushioning, grip, breathability, weight (1-5)
+  archSupport      Int @default(3)
+  cushioning       Int @default(3)
+  grip             Int @default(3)
+  breathability    Int @default(3)
+  // suits which personas (comma separated): general,senior,sports,kids
+  suitsPersonas    String @default("general")
+  // A card is never shown without a working image. prisma/validate-images.ts
+  // sets this false when imageUrl is dead/not an image, and every listing query
+  // filters on it — so a broken image removes the product instead of rendering
+  // an empty box. imageNote records why, for the operator.
+  imageOk     Boolean  @default(true)
+  imageNote   String   @default("")
+  imageCheckedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  offers      Offer[]
+  wishlist    Wishlist[]
+  feedback    Feedback[]
+
+  @@index([category])
+  @@index([gender])
+  @@index([imageOk])
+}
+
+// A buy-link from a retailer (Trivago-style comparison + redirect)
+model Offer {
+  id         String  @id @default(cuid())
+  productId  String
+  product    Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  retailer   String  // Amazon.in, Flipkart, Myntra, Ajio, brand.com ...
+  price      Int     // current price INR
+  url        String  // redirect / affiliate url
+  inStock    Boolean @default(true)
+  deliveryDays Int   @default(3)
+  retailerRating Float @default(4.2)
+
+  @@index([productId])
+}
+
+model Wishlist {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+}
+
+model Feedback {
+  id        String   @id @default(cuid())
+  productId String
+  userId    String?
+  authorName String
+  rating    Int      // 1-5
+  fitFeedback String @default("true-to-size") // small | true-to-size | large
+  comment   String
+  createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([productId])
+}
+
+// Foot scan result / fit profile
+model FootProfile {
+  id            String @id @default(cuid())
+  userId        String @unique
+  lengthMm      Float  // foot length in mm
+  widthMm       Float
+  archType      String @default("normal") // flat | normal | high
+  ukSize        Float
+  euSize        Float
+  usSize        Float
+  widthCategory String @default("D")      // narrow | D | wide
+  updatedAt     DateTime @updatedAt
+  user          User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// Analytics
+//
+// Two tables on purpose: SearchLog captures *what people are looking for*
+// (the demand signal a brand would pay for), Event captures *how the product
+// is used* (funnel + reach). Mixing them into one wide table makes both
+// queries slower and the intent harder to read.
+// ---------------------------------------------------------------------------
+
+model SearchLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  // anonymous but stable per browser, so we can count people not requests
+  visitorId String   @default("")
+  query     String   @default("")
+  // where the search came from: text | voice | photo | category | persona
+  source    String   @default("text")
+  // parsed intent — these are the columns the demand reports group by
+  gender    String   @default("")
+  category  String   @default("")
+  brand     String   @default("")
+  persona   String   @default("")
+  maxPrice  Int?
+  needs     String   @default("") // comma separated
+  aiParsed  Boolean  @default(false)
+  resultCount Int    @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([category])
+  @@index([gender])
+  @@index([brand])
+}
+
+model Event {
+  id        String   @id @default(cuid())
+  // page_view | search | foot_scan | photo_match | try_on | buy_click |
+  // signup | login | question | answer | brand_review | product_review
+  type      String
+  path      String   @default("")
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  visitorId String   @default("")
+  // free-form context (product slug, retailer, brand ...)
+  meta      String   @default("")
+  referrer  String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([type])
+  @@index([createdAt])
+  @@index([visitorId])
+}
+
+// ---------------------------------------------------------------------------
+// Brand-level feedback — deliberately separate from product Feedback so a
+// brand can be rated on things that aren't about one shoe (sizing
+// consistency, durability, service). This is the dataset a brand could act on.
+// ---------------------------------------------------------------------------
+
+model BrandFeedback {
+  id         String   @id @default(cuid())
+  brand      String
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  authorName String
+  rating     Int      // 1-5 overall
+  // per-aspect scores, 1-5, 0 = not rated
+  quality    Int      @default(0)
+  comfort    Int      @default(0)
+  durability Int      @default(0)
+  valueScore Int      @default(0)
+  sizingAccuracy String @default("true-to-size") // small | true-to-size | large
+  comment    String
+  createdAt  DateTime @default(now())
+
+  @@index([brand])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Community Q&A — shoppers ask, anyone (including brands) answers, answers are
+// public, and the asker can track their own threads from their account.
+// ---------------------------------------------------------------------------
+
+model Question {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // find = "where can I get this shoe", advice = "should I buy this"
+  kind      String   @default("find")
+  title     String
+  body      String
+  brand     String   @default("")
+  category  String   @default("")
+  city      String   @default("")
+  budget    Int?
+  imageUrl  String   @default("")
+  status    String   @default("open")  // open | answered | closed
+  views     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  answers   Answer[]
+
+  @@index([createdAt])
+  @@index([kind])
+  @@index([status])
+}
+
+model Answer {
+  id         String   @id @default(cuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  body       String
+  // set when the answer comes from a brand account — shown as a badge so
+  // readers can weigh a brand's own reply differently from a shopper's
+  brandName  String   @default("")
+  helpful    Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  @@index([questionId])
+}
+
+// Health / activity tracking to power personalized suggestions
+model HealthLog {
+  id        String   @id @default(cuid())
+  userId    String
+  date      DateTime @default(now())
+  steps     Int      @default(0)
+  distanceKm Float   @default(0)
+  activity  String   @default("walk") // walk | run | gym | standing
+  // optional signals
+  painArea  String   @default("")     // heel | arch | knee | none
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
