@@ -3,10 +3,13 @@
  * listing instead of rendering as an empty box.
  *
  * Runs on every boot from startup.sh (a handful of HTTP requests, seconds) and
- * can be run by hand after editing the catalog. It only checks that the URL
- * serves a real image — deciding whether the picture shows the *right* footwear
- * needs the vision audit (see prisma/audit-images.ts), which costs tokens and is
- * therefore opt-in.
+ * can be run by hand after editing the catalog.
+ *
+ * It owns `imageOk` and ONLY `imageOk`. Whether the picture shows the right
+ * footwear, or a competitor's logo, is a separate question owned by
+ * prisma/audit-images.ts via `imageBrandSafe`. Keeping them apart matters: when
+ * both used one flag, this boot-time check kept restoring products the brand
+ * audit had withheld, quietly putting a rival's logo back on the site.
  */
 import { PrismaClient } from "@prisma/client";
 

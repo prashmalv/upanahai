@@ -182,11 +182,13 @@ async function main() {
     } else {
       const mark2 = v.visibleBrand ? ` [${v.visibleBrand}]` : " [unbranded]";
       console.log(`  OK       ${label}${mark2}`);
+      // Clear any previous block so a corrected image comes back automatically.
+      if (hide) await mark(p.id, true, "");
       kept++;
     }
   }
 
-  const visible = await prisma.product.count({ where: { imageOk: true } });
+  const visible = await prisma.product.count({ where: { imageOk: true, imageBrandSafe: true } });
   console.log(
     `\n[audit] ${products.length} checked · ${kept} publishable · ` +
       `${unsafe.length} unsafe · ${warnings.length} cosmetic warnings`
@@ -205,10 +207,19 @@ async function main() {
   }
 }
 
-function mark(id: string, imageOk: boolean, note: string) {
+/**
+ * Writes only `imageBrandSafe`. URL health is `imageOk`, owned by
+ * prisma/validate-images.ts — this script must not touch it, or the two would
+ * overwrite each other on every boot.
+ */
+function mark(id: string, brandSafe: boolean, note: string) {
   return prisma.product.update({
     where: { id },
-    data: { imageOk, imageNote: note.slice(0, 180), imageCheckedAt: new Date() }
+    data: {
+      imageBrandSafe: brandSafe,
+      imageBrandNote: note.slice(0, 180),
+      imageCheckedAt: new Date()
+    }
   });
 }
 

@@ -2,14 +2,17 @@ import { prisma } from "./db";
 import type { ProductCardData } from "@/components/ProductCard";
 
 /**
- * Every listing query goes through DISPLAYABLE. A product whose image can't be
- * shown is removed from the catalog surface rather than rendered as an empty
- * box — prisma/validate-images.ts maintains the flag.
+ * Every listing query goes through DISPLAYABLE. A product is shown only when
+ * BOTH image gates pass:
  *
- * Import and spread this into any new product query instead of writing
- * `imageOk: true` by hand, so the rule can't be forgotten in one place.
+ *   imageOk        — the URL still serves an image (prisma/validate-images.ts)
+ *   imageBrandSafe — it is footwear, with no competitor's brand mark on it
+ *                    (prisma/audit-images.ts)
+ *
+ * Import and spread this into any new product query rather than writing the
+ * conditions by hand, so a new listing surface can't quietly skip a gate.
  */
-export const DISPLAYABLE = { imageOk: true } as const;
+export const DISPLAYABLE = { imageOk: true, imageBrandSafe: true } as const;
 
 export function toCard(p: any, reasons?: string[]): ProductCardData {
   const lowestPrice = p.offers?.length

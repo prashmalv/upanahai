@@ -13,6 +13,8 @@ export type EventType =
   | "photo_match"
   | "try_on"
   | "buy_click"
+  /** Sent a shopper to a brand's own store — the lead we deliver to brands. */
+  | "brand_visit"
   | "signup"
   | "login"
   | "question"
