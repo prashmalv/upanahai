@@ -9,6 +9,23 @@ export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Login required" }, { status: 401 });
 
+  // A saved foot measurement is health data, so the same recorded consent applies
+  // as to the activity log — gating one and not the other would be incoherent.
+  const consent = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: { healthConsentAt: true }
+  });
+  if (!consent?.healthConsentAt) {
+    return NextResponse.json(
+      {
+        error:
+          "Saving your measurements needs your consent first — you can give it on the health page.",
+        needsConsent: true
+      },
+      { status: 403 }
+    );
+  }
+
   const body = await req.json();
   const { lengthMm, widthMm, archType, sizes, sizeIsReliable } = body;
 

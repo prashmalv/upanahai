@@ -3,7 +3,7 @@
 // provider to "postgresql" or "mysql" and update DATABASE_URL.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   // debian targets cover Azure App Service (Linux) — "native" alone breaks if the
   // build container's OpenSSL differs from the runtime container's.
   binaryTargets = ["native", "debian-openssl-1.1.x", "debian-openssl-3.0.x"]
@@ -15,91 +15,119 @@ datasource db {
 }
 
 model User {
-  id          String   @id @default(cuid())
-  email       String   @unique
-  name        String?
-  passwordHash String
+  id                   String    @id @default(cuid())
+  email                String    @unique
+  name                 String?
+  passwordHash         String
   // persona: general | senior | sports | kids-parent
-  persona     String   @default("general")
+  persona              String    @default("general")
   // role: user | brand | admin  — admin unlocks /admin analytics
-  role        String   @default("user")
+  role                 String    @default("user")
   // brand representatives get their replies badged in the community
-  brandName   String   @default("")
+  brandName            String    @default("")
   // Where the user registered from. Collected at signup rather than guessed
   // from IP, so the analytics are honest about their own source.
-  city        String   @default("")
-  state       String   @default("")
-  country     String   @default("IN")
-  lastLoginAt DateTime?
-  createdAt   DateTime @default(now())
+  city                 String    @default("")
+  state                String    @default("")
+  country              String    @default("IN")
+  lastLoginAt          DateTime?
+  // Health data (foot measurements, pain and activity logs) is only collected
+  // after explicit, recorded consent. The version is stored alongside the
+  // timestamp so that when the notice changes we can tell who agreed to what —
+  // "they ticked a box once" is not an auditable consent record.
+  healthConsentAt      DateTime?
+  healthConsentVersion String    @default("")
+  // Separate, optional, and revocable: permission to include this person's
+  // measurements in anonymised aggregate statistics. Bundling it into the same
+  // tick as "let me use the app" would not be freely given consent.
+  researchConsent      Boolean   @default(false)
+  researchConsentAt    DateTime?
+  // Self-declared, optional, and health data like the rest. It exists because
+  // diabetes changes what this tool should do: reduced sensation means pressure
+  // damage from a bad fit goes unfelt, so the referral threshold drops and daily
+  // foot checks matter more than any shoe we could recommend. Asking is the only
+  // way to know — inferring it from anything else would be both wrong and creepy.
+  diabetesDeclared     Boolean   @default(false)
+  createdAt            DateTime  @default(now())
 
-  wishlist    Wishlist[]
-  feedback    Feedback[]
-  healthLogs  HealthLog[]
-  footProfile FootProfile?
+  wishlist      Wishlist[]
+  feedback      Feedback[]
+  healthLogs    HealthLog[]
+  footProfile   FootProfile?
   brandFeedback BrandFeedback[]
-  questions   Question[]
-  answers     Answer[]
-  searchLogs  SearchLog[]
-  events      Event[]
+  questions     Question[]
+  answers       Answer[]
+  searchLogs    SearchLog[]
+  events        Event[]
+  careEpisodes  CareEpisode[]
 
   @@index([role])
   @@index([state])
 }
 
 model Product {
-  id          String   @id @default(cuid())
-  brand       String
-  name        String
-  slug        String   @unique
+  id             String    @id @default(cuid())
+  brand          String
+  name           String
+  slug           String    @unique
   // men | women | kids | unisex
-  gender      String
+  gender         String
   // sports | running | walking | casual | formal | sandals | orthopedic | school
-  category    String
-  description String
-  imageUrl    String
-  colorway    String   @default("")
-  basePrice   Int      // MRP in INR
-  rating      Float    @default(0)
-  reviewCount Int      @default(0)
+  category       String
+  description    String
+  imageUrl       String
+  colorway       String    @default("")
+  basePrice      Int // MRP in INR
+  rating         Float     @default(0)
+  reviewCount    Int       @default(0)
   // comma-separated tags used by the recommender & photo-matcher
-  tags        String   @default("")
+  tags           String    @default("")
   // support features: arch, cushioning, grip, breathability, weight (1-5)
-  archSupport      Int @default(3)
-  cushioning       Int @default(3)
-  grip             Int @default(3)
-  breathability    Int @default(3)
+  archSupport    Int       @default(3)
+  cushioning     Int       @default(3)
+  grip           Int       @default(3)
+  breathability  Int       @default(3)
   // suits which personas (comma separated): general,senior,sports,kids
-  suitsPersonas    String @default("general")
-  // A card is never shown without a working image. prisma/validate-images.ts
-  // sets this false when imageUrl is dead/not an image, and every listing query
-  // filters on it — so a broken image removes the product instead of rendering
-  // an empty box. imageNote records why, for the operator.
-  imageOk     Boolean  @default(true)
-  imageNote   String   @default("")
+  suitsPersonas  String    @default("general")
+  // Two INDEPENDENT image gates. They answer different questions and are owned
+  // by different scripts, so they must not share a flag:
+  //
+  //   imageOk        — does the URL still serve an image?
+  //                    owned by prisma/validate-images.ts, runs every boot
+  //   imageBrandSafe — is it footwear, and free of a competitor's brand mark?
+  //                    owned by prisma/audit-images.ts, run on demand (costs tokens)
+  //
+  // They were one flag at first, and the cheap boot-time URL check kept flipping
+  // it back to true — silently republishing images the brand audit had withheld
+  // for showing a rival's logo. Separate flags make that impossible.
+  imageOk        Boolean   @default(true)
+  imageNote      String    @default("")
+  imageBrandSafe Boolean   @default(true)
+  imageBrandNote String    @default("")
   imageCheckedAt DateTime?
-  createdAt   DateTime @default(now())
+  createdAt      DateTime  @default(now())
 
-  offers      Offer[]
-  wishlist    Wishlist[]
-  feedback    Feedback[]
+  offers   Offer[]
+  wishlist Wishlist[]
+  feedback Feedback[]
 
   @@index([category])
   @@index([gender])
   @@index([imageOk])
+  @@index([imageBrandSafe])
 }
 
 // A buy-link from a retailer (Trivago-style comparison + redirect)
 model Offer {
-  id         String  @id @default(cuid())
-  productId  String
-  product    Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  retailer   String  // Amazon.in, Flipkart, Myntra, Ajio, brand.com ...
-  price      Int     // current price INR
-  url        String  // redirect / affiliate url
-  inStock    Boolean @default(true)
-  deliveryDays Int   @default(3)
-  retailerRating Float @default(4.2)
+  id             String  @id @default(cuid())
+  productId      String
+  product        Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  retailer       String // Amazon.in, Flipkart, Myntra, Ajio, brand.com ...
+  price          Int // current price INR
+  url            String // redirect / affiliate url
+  inStock        Boolean @default(true)
+  deliveryDays   Int     @default(3)
+  retailerRating Float   @default(4.2)
 
   @@index([productId])
 }
@@ -116,33 +144,33 @@ model Wishlist {
 }
 
 model Feedback {
-  id        String   @id @default(cuid())
-  productId String
-  userId    String?
-  authorName String
-  rating    Int      // 1-5
-  fitFeedback String @default("true-to-size") // small | true-to-size | large
-  comment   String
-  createdAt DateTime @default(now())
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  id          String   @id @default(cuid())
+  productId   String
+  userId      String?
+  authorName  String
+  rating      Int // 1-5
+  fitFeedback String   @default("true-to-size") // small | true-to-size | large
+  comment     String
+  createdAt   DateTime @default(now())
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([productId])
 }
 
 // Foot scan result / fit profile
 model FootProfile {
-  id            String @id @default(cuid())
-  userId        String @unique
-  lengthMm      Float  // foot length in mm
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  lengthMm      Float // foot length in mm
   widthMm       Float
-  archType      String @default("normal") // flat | normal | high
+  archType      String   @default("normal") // flat | normal | high
   ukSize        Float
   euSize        Float
   usSize        Float
-  widthCategory String @default("D")      // narrow | D | wide
+  widthCategory String   @default("D") // narrow | D | wide
   updatedAt     DateTime @updatedAt
-  user          User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // ---------------------------------------------------------------------------
@@ -155,24 +183,24 @@ model FootProfile {
 // ---------------------------------------------------------------------------
 
 model SearchLog {
-  id        String   @id @default(cuid())
-  userId    String?
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  id          String   @id @default(cuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   // anonymous but stable per browser, so we can count people not requests
-  visitorId String   @default("")
-  query     String   @default("")
+  visitorId   String   @default("")
+  query       String   @default("")
   // where the search came from: text | voice | photo | category | persona
-  source    String   @default("text")
+  source      String   @default("text")
   // parsed intent — these are the columns the demand reports group by
-  gender    String   @default("")
-  category  String   @default("")
-  brand     String   @default("")
-  persona   String   @default("")
-  maxPrice  Int?
-  needs     String   @default("") // comma separated
-  aiParsed  Boolean  @default(false)
-  resultCount Int    @default(0)
-  createdAt DateTime @default(now())
+  gender      String   @default("")
+  category    String   @default("")
+  brand       String   @default("")
+  persona     String   @default("")
+  maxPrice    Int?
+  needs       String   @default("") // comma separated
+  aiParsed    Boolean  @default(false)
+  resultCount Int      @default(0)
+  createdAt   DateTime @default(now())
 
   @@index([createdAt])
   @@index([category])
@@ -206,20 +234,20 @@ model Event {
 // ---------------------------------------------------------------------------
 
 model BrandFeedback {
-  id         String   @id @default(cuid())
-  brand      String
-  userId     String?
-  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  authorName String
-  rating     Int      // 1-5 overall
+  id             String   @id @default(cuid())
+  brand          String
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  authorName     String
+  rating         Int // 1-5 overall
   // per-aspect scores, 1-5, 0 = not rated
-  quality    Int      @default(0)
-  comfort    Int      @default(0)
-  durability Int      @default(0)
-  valueScore Int      @default(0)
-  sizingAccuracy String @default("true-to-size") // small | true-to-size | large
-  comment    String
-  createdAt  DateTime @default(now())
+  quality        Int      @default(0)
+  comfort        Int      @default(0)
+  durability     Int      @default(0)
+  valueScore     Int      @default(0)
+  sizingAccuracy String   @default("true-to-size") // small | true-to-size | large
+  comment        String
+  createdAt      DateTime @default(now())
 
   @@index([brand])
   @@index([createdAt])
@@ -243,11 +271,11 @@ model Question {
   city      String   @default("")
   budget    Int?
   imageUrl  String   @default("")
-  status    String   @default("open")  // open | answered | closed
+  status    String   @default("open") // open | answered | closed
   views     Int      @default(0)
   createdAt DateTime @default(now())
 
-  answers   Answer[]
+  answers Answer[]
 
   @@index([createdAt])
   @@index([kind])
@@ -272,15 +300,74 @@ model Answer {
 
 // Health / activity tracking to power personalized suggestions
 model HealthLog {
-  id        String   @id @default(cuid())
-  userId    String
-  date      DateTime @default(now())
-  steps     Int      @default(0)
-  distanceKm Float   @default(0)
-  activity  String   @default("walk") // walk | run | gym | standing
+  id          String   @id @default(cuid())
+  userId      String
+  date        DateTime @default(now())
+  steps       Int      @default(0)
+  distanceKm  Float    @default(0)
+  activity    String   @default("walk") // walk | run | gym | standing
   // optional signals
-  painArea  String   @default("")     // heel | arch | knee | none
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  painArea    String   @default("") // heel | arch | knee | forefoot | none
+  // Red flags. These are NOT footwear problems — numbness, a wound that isn't
+  // healing, or new one-sided swelling need a clinician, and in someone with
+  // diabetes they can precede serious complications. When any is set the app
+  // withholds footwear advice and shows referral guidance instead: answering a
+  // possible ulcer with a shoe recommendation would be the single most harmful
+  // thing this product could do.
+  numbness    Boolean  @default(false)
+  woundOrSore Boolean  @default(false)
+  swelling    Boolean  @default(false)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([date])
+}
+
+/// One round of "we suggested something — did it actually help?"
+///
+/// This exists because everything else the app records is an input: a
+/// measurement, a search, a click. None of it says whether a person's feet felt
+/// better afterwards, and that is the only claim worth making about a foot health
+/// tool. An episode captures the state at the moment guidance was given, waits
+/// four weeks, and then asks two plain questions: did you change your footwear,
+/// and is the pain better?
+///
+/// It is deliberately modest evidence — self-reported, unblinded, no control
+/// group — and the admin view says so. But "of the people who acted on our
+/// guidance, N% reported less pain after four weeks, against M% of those who
+/// didn't" is a real outcome measure, and it is the difference between a shopping
+/// site and a screening tool.
+model CareEpisode {
+  id     String @id @default(cuid())
+  userId String
+
+  startedAt DateTime @default(now())
+
+  // Baseline: what the screening saw when the guidance was shown. Frozen here on
+  // purpose — comparing against a live recomputation would let later logs rewrite
+  // the starting point and quietly flatter the result.
+  baselinePainDays  Int    @default(0)
+  baselinePainAreas String @default("") // csv
+  needs             String @default("") // csv of the footwear features suggested
+  archType          String @default("")
+  widthCategory     String @default("")
+
+  followUpDueAt   DateTime
+  followUpAt      DateTime?
+  /// yes | partly | no  — did they act on the guidance at all?
+  changedFootwear String    @default("")
+  /// gone | better | same | worse
+  painChange      String    @default("")
+  /// 1-5, how comfortable their current footwear feels now
+  comfortRating   Int?
+  note            String    @default("")
+  /// Set when the user declines to answer, so we stop asking. Counted separately
+  /// from a reply: treating a dismissal as "no change" would understate harm and
+  /// treating it as improvement would be dishonest.
+  dismissedAt     DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([followUpDueAt])
 }

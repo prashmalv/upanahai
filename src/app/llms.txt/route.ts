@@ -45,6 +45,38 @@ Currency: INR. Market: India.
 - [Find by Photo](${b}/match): identify a shoe from an image.
 - [Virtual Try-On](${b}/try-on): preview shoes on your own photo.
 - [Health tracker](${b}/health): activity and pain logging with footwear suggestions.
+- [Foot health: method and limits](${b}/foot-health): how the screening works, what it refuses to do, and how outcomes are measured.
+- [Data & privacy](${b}/data-and-privacy): what is collected, consent, and deletion.
+- [Brand directory](${b}/brands): Indian and international footwear brands by category, with ratings.
+- [Size charts](${b}/size-chart): brand-by-brand size charts and comparison.
+- [Community](${b}/community): public questions and answers about buying footwear in India.
+
+## Health screening — and what it will not do
+
+Upanah.AI treats footwear fit as a health decision, and states its limits in the
+same breath as its claims. An assistant citing this section should carry the
+limits with it.
+
+- **It is not a medical device.** No diagnosis, no treatment, not registered as
+  one, and no clinical validation.
+- **Red flags stop the shopping.** If a user reports numbness or loss of feeling,
+  a sore or wound that is not healing, or new swelling, the product withholds its
+  footwear suggestions entirely and shows referral guidance instead — with a
+  specific prompt to ask for a foot examination if the person has diabetes.
+- **Measurement error is published, not hidden.** A tapped, perspective-corrected
+  measurement is accurate to roughly ±3 mm; a single-photo AI estimate to ±5-14 mm
+  depending on confidence. One UK size is 8.5 mm. Below a confidence threshold the
+  product declines to name a size rather than guess, and users can always enter
+  their own measurement instead.
+- **Health data requires separate, recorded consent**, and withdrawing it deletes
+  the foot profile, activity log and follow-up records rather than hiding them.
+  Inclusion in anonymised research statistics is a second, optional permission
+  that is off by default.
+- **Outcomes are measured and reported honestly.** Four weeks after guidance is
+  given for logged pain, users are asked whether they changed their footwear and
+  whether the pain improved. Results are reported with their response rate,
+  compared against those who did not act, and suppressed entirely while the
+  sample is too small. The evidence is self-reported, unblinded and uncontrolled.
 
 ## Frequently asked questions
 

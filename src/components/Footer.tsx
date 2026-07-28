@@ -47,6 +47,7 @@ export function Footer() {
             <li><Link href="/try-on" className="hover:text-brand-600">Virtual Try-On</Link></li>
             <li><Link href="/match" className="hover:text-brand-600">Find by Photo</Link></li>
             <li><Link href="/health" className="hover:text-brand-600">Health Tracker</Link></li>
+            <li><Link href="/foot-health" className="hover:text-brand-600">Foot health &amp; our limits</Link></li>
           </ul>
         </div>
         <div>
@@ -56,6 +57,7 @@ export function Footer() {
             <li><Link href="/community" className="hover:text-brand-600">Ask the community</Link></li>
             <li><Link href="/community?kind=advice" className="hover:text-brand-600">Should I buy it?</Link></li>
             <li><Link href="/login" className="hover:text-brand-600">Sign in / Register</Link></li>
+            <li><Link href="/data-and-privacy" className="hover:text-brand-600">Data &amp; privacy</Link></li>
           </ul>
         </div>
       </div>

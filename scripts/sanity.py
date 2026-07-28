@@ -6,7 +6,7 @@ anything a customer would notice. Run against local or production.
 
     python3 sanity.py http://localhost:3007 [admin-password]
 """
-import json, random, re, sys, urllib.error, urllib.parse, urllib.request
+import json, random, re, sys, time, urllib.error, urllib.parse, urllib.request
 
 BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://localhost:3007").rstrip("/")
 ADMIN_PW = sys.argv[2] if len(sys.argv) > 2 else None
@@ -39,15 +39,28 @@ class Client:
                 return None
 
         opener = urllib.request.build_opener(*([] if follow else [NoRedirect]))
-        try:
-            r = opener.open(req, timeout=120)
-            self._store(r.headers)
-            return r.status, r.read().decode("utf-8", "replace"), r.geturl()
-        except urllib.error.HTTPError as e:
-            self._store(e.headers)
-            return e.code, e.read().decode("utf-8", "replace"), e.headers.get("Location", "") or e.url
-        except Exception as e:
-            return 0, f"{type(e).__name__}: {e}", ""
+
+        # Retry connection-level failures, never HTTP ones.
+        #
+        # urllib opens a fresh TCP+TLS connection per request and, at this
+        # volume, macOS intermittently returns ECONNREFUSED / times out — a
+        # client-side artefact, not the server. Measured side by side: 60 curl
+        # requests to the same URL all succeeded while urllib failed 11 of 60.
+        # Without this the suite reports the application as broken when it isn't,
+        # which is worse than no test at all.
+        last = None
+        for attempt in range(4):
+            try:
+                r = opener.open(req, timeout=120)
+                self._store(r.headers)
+                return r.status, r.read().decode("utf-8", "replace"), r.geturl()
+            except urllib.error.HTTPError as e:
+                self._store(e.headers)
+                return e.code, e.read().decode("utf-8", "replace"), e.headers.get("Location", "") or e.url
+            except Exception as e:
+                last = e
+                time.sleep(0.4 * (attempt + 1))
+        return 0, f"{type(last).__name__}: {last}", ""
 
     def page(self, path):
         """HTML with Next's SSR comment markers removed.
@@ -80,7 +93,7 @@ tag = random.randint(100000, 999999)
 
 # ---------------------------------------------------------------- public pages
 print("\n=== public pages render, no error text, no broken images ===")
-PAGES = ["/", "/search", "/search?q=running+shoes+under+4000", "/search?category=walking",
+PAGES = ["/", "/data-and-privacy", "/foot-health", "/search", "/search?q=running+shoes+under+4000", "/search?category=walking",
          "/search?gender=kids", "/foot-scan", "/size-chart", "/size-chart?mm=267",
          "/match", "/try-on", "/health", "/brands", "/community",
          "/community?kind=find", "/community?kind=advice", "/login"]
@@ -186,6 +199,18 @@ ok("account greets the user", "Sanity Shopper" in body)
 st, body, _ = shopper.go("/api/foot-scan", {"measuredLengthMm": 267, "source": "manual", "audience": "men"})
 res = json.loads(body) if st == 200 else {}
 ok("measure via manual entry", st == 200 and res.get("sizeIsReliable") is True, f"{st}")
+
+# Health data is gated on recorded consent — prove the gate, then consent.
+st, body, _ = shopper.go("/api/foot-scan/save", res)
+ok("saving measurements blocked without consent", st == 403 and "needsConsent" in body, f"{st} {body[:90]}")
+st, body, _ = shopper.go("/api/health-consent", {"health": True})
+ok("health consent recorded", st == 200 and json.loads(body).get("health") is True, f"{st} {body[:90]}")
+st, body, _ = shopper.go("/api/health-consent")
+cons = json.loads(body) if st == 200 else {}
+ok("consent stores the notice version", bool(cons.get("version")) and cons.get("version") == cons.get("currentVersion"), body[:120])
+ok("research consent is opt-in, not default", cons.get("research") is False, body[:90])
+ok("diabetes declaration is off by default", cons.get("diabetes") is False, body[:90])
+
 st, body, _ = shopper.go("/api/foot-scan/save", res)
 ok("save foot profile", st == 200, f"{st} {body[:100]}")
 st, body, _ = shopper.page("/account")
@@ -266,15 +291,117 @@ if ADMIN_PW:
     st, body, loc = admin.go("/admin", follow=False)
     ok("admin opens dashboard", st == 200, f"{st} -> {loc}")
     for section in ["Reach", "What people are looking for", "Where users register from",
-                    "Brand scorecard", "Purchase intent", "Community"]:
+                    "Brand scorecard", "Purchase intent", "Community", "Health outcomes",
+                    "Anonymised foot anthropometry"]:
         ok(f"dashboard: {section}", section in body)
+    # The outcome numbers must never be quoted without their caveats.
+    ok("outcomes state what the evidence is worth", "no control group" in body)
+    ok("outcomes suppress rates while the sample is tiny",
+       "Not enough answers to quote a rate yet" in body or "reported less pain" in body)
+
     for w in [7, 30, 90, 365]:
         st, _, _ = admin.go(f"/admin?days={w}")
         ok(f"dashboard window {w}d", st == 200, f"{st}")
 
+print("\n=== brand directory ===")
+st, body, _ = anon.page("/brands")
+ok("brand directory loads", st == 200, f"status {st}")
+import re as _re
+slugs = sorted(set(_re.findall(r"/api/brand-visit\?b=([a-z0-9-]+)", body)))
+ok("directory lists many brands", len(slugs) >= 25, f"{len(slugs)} found")
+ok("directory states its neutrality", "don't take payment for a listing" in body)
+
+for f_ in ["category=leather", "category=comfort", "category=school", "audience=kids",
+           "price=value", "origin=Indian", "category=running&price=value"]:
+    st, b2, _ = anon.page(f"/brands?{f_}")
+    n = len(set(_re.findall(r"/api/brand-visit\?b=([a-z0-9-]+)", b2)))
+    ok(f"filter {f_} returns brands", st == 200 and n > 0, f"{st}, {n} brands")
+
+# every brand's detail page must exist and every lead redirect must resolve
+bad_pages, bad_redirects = [], []
+for slug in slugs:
+    st, _, _ = anon.go(f"/brands/{slug}")
+    if st != 200:
+        bad_pages.append(f"{slug}:{st}")
+    st, _, loc = anon.go(f"/api/brand-visit?b={slug}", follow=False)
+    if st not in (302, 307) or not loc.startswith("http"):
+        bad_redirects.append(f"{slug}:{st}")
+ok(f"all {len(slugs)} brand pages load", not bad_pages, ", ".join(bad_pages[:5]))
+ok(f"all {len(slugs)} lead redirects resolve", not bad_redirects, ", ".join(bad_redirects[:5]))
+
+st, _, _ = anon.go("/api/brand-visit?b=not-a-real-brand", follow=False)
+ok("unknown brand redirect rejected", st == 404, f"{st}")
+st, _, _ = anon.go("/brands/not-a-real-brand")
+ok("unknown brand page 404s", st == 404, f"{st}")
+
+st, body, _ = anon.page("/sitemap.xml")
+ok("sitemap includes brand pages", body.count("/brands/") >= 25, f"{body.count('/brands/')} entries")
+
 print("\n=== remaining endpoints and edge pages ===")
 st, body, _ = shopper.go("/api/health", {"steps": 4200, "distanceKm": 3.1, "activity": "walk", "painArea": "heel"})
 ok("health log posts", st in (200, 201), f"{st} {body[:80]}")
+
+st, body, _ = shopper.go("/api/health")
+hd = json.loads(body) if st == 200 else {}
+scr = hd.get("screening") or {}
+ok("screening produced", st == 200 and bool(scr), f"{st}")
+ok("screening not urgent for ordinary pain", scr.get("urgent") is False, str(scr.get("urgent")))
+ok("screening offers footwear needs", bool(scr.get("needs")), str(scr.get("needs")))
+
+# A red flag must suppress product advice and route to a clinician.
+shopper.go("/api/health", {"steps": 1000, "distanceKm": 0.5, "activity": "walk", "numbness": True})
+st, body, _ = shopper.go("/api/health")
+scr = (json.loads(body) if st == 200 else {}).get("screening") or {}
+ok("red flag makes the screening urgent", scr.get("urgent") is True, str(scr.get("urgent")))
+ok("red flag carries a clinician action", "doctor" in json.dumps(scr.get("redFlags", [])).lower())
+
+# Declaring diabetes must lower the referral threshold, because reduced sensation
+# means a bad fit does its damage unfelt. Pain that is otherwise a footwear note
+# becomes a reason to see someone.
+st, body, _ = shopper.go("/api/health-consent", {"diabetes": True})
+ok("diabetes can be declared", st == 200 and json.loads(body).get("diabetes") is True, body[:90])
+for _ in range(4):
+    shopper.go("/api/health", {"steps": 5000, "distanceKm": 3, "activity": "walk", "painArea": "heel"})
+st, body, _ = shopper.go("/api/health")
+scr = (json.loads(body) if st == 200 else {}).get("screening") or {}
+ok("persistent pain refers when diabetes is declared", scr.get("urgent") is True, str(scr.get("urgent")))
+ok("referral asks for a foot examination",
+   "foot examination" in json.dumps(scr.get("redFlags", [])).lower(),
+   json.dumps(scr.get("redFlags", []))[:160])
+shopper.go("/api/health-consent", {"diabetes": False})
+
+# The outcome loop. Guidance for logged pain opens a four-week follow-up; the
+# follow-up is the only thing this product records that says whether it helped.
+st, body, _ = shopper.go("/api/health/follow-up")
+ok("no follow-up offered on day one", json.loads(body).get("episode") is None, body[:100])
+st, body, _ = shopper.go("/api/health/follow-up", {"episodeId": "not-mine",
+                                                   "painChange": "better", "changedFootwear": "yes"})
+ok("cannot answer someone else's follow-up", st == 404, f"{st}")
+
+# Withdrawal must erase, not merely hide.
+st, body, _ = shopper.go("/api/health-consent", {"health": False})
+ok("withdrawal reports deletion", st == 200 and json.loads(body).get("deleted") is True, body[:100])
+st, body, _ = shopper.go("/api/health")
+hd = json.loads(body) if st == 200 else {}
+ok("withdrawal removed the logs", hd.get("logs") == [], str(hd.get("logs"))[:60])
+ok("withdrawal removed the foot profile", hd.get("hasFootProfile") is False)
+st, body, _ = shopper.go("/api/health/follow-up")
+ok("withdrawal removed the care episodes", json.loads(body).get("episode") is None, body[:80])
+st, body, _ = shopper.go("/api/health-consent")
+ok("withdrawal cleared the diabetes declaration", json.loads(body).get("diabetes") is False, body[:90])
+st, _, _ = shopper.go("/api/health", {"steps": 1, "distanceKm": 1, "activity": "walk"})
+ok("logging blocked again after withdrawal", st == 403, f"{st}")
+
+st, body, _ = anon.page("/foot-health")
+ok("public foot-health page loads", st == 200, f"{st}")
+for needle in ["not a medical device", "Not clinically validated",
+               "did you change your footwear", "±3 mm", "8.5 mm"]:
+    ok(f"foot-health page states: {needle}", needle in body)
+
+st, body, _ = anon.page("/data-and-privacy")
+ok("privacy notice page loads", st == 200, f"{st}")
+for needle in ["not a medical device", "Withdrawal deletes", "Digital Personal Data Protection Act"]:
+    ok(f"privacy notice states: {needle}", needle in body)
 if prods:
     st, body, _ = shopper.go("/api/try-on", {"productId": prods[0]["id"], "personImageDataUrl": "data:image/jpeg;base64,/9j/4AAQ", "outfit": "Casual"})
     ok("try-on responds without 500", st != 500 and st != 0, f"{st} {body[:80]}")

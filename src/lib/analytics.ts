@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { improved, summarise, MIN_EPISODES_FOR_RATE } from "@/lib/outcomes";
 
 /**
  * Read side of the analytics. Every function is scoped by a day window so the
@@ -205,12 +206,53 @@ export async function getTrend(days: Window) {
  */
 export async function getHiddenProducts() {
   const rows = await prisma.product.findMany({
-    where: { imageOk: false },
-    select: { slug: true, brand: true, name: true, imageNote: true, imageCheckedAt: true },
+    where: { OR: [{ imageOk: false }, { imageBrandSafe: false }] },
+    select: {
+      slug: true, brand: true, name: true,
+      imageOk: true, imageNote: true,
+      imageBrandSafe: true, imageBrandNote: true,
+      imageCheckedAt: true
+    },
     orderBy: { brand: "asc" }
   });
   const total = await prisma.product.count();
-  return { hidden: rows, total, visible: total - rows.length };
+  return {
+    hidden: rows.map((r) => ({
+      ...r,
+      // Surface whichever gate actually blocked it.
+      reason: !r.imageOk ? r.imageNote : r.imageBrandNote
+    })),
+    total,
+    visible: total - rows.length
+  };
+}
+
+/**
+ * Leads sent to each brand's own store.
+ *
+ * This is the number a brand cares about, and the reason a neutral directory is
+ * worth their attention: qualified traffic from someone who already knows their
+ * size and has read other buyers' verdicts. Recorded server-side on the
+ * redirect, so it can be accounted for if a brand ever asks.
+ */
+export async function getBrandLeads(days: Window) {
+  const rows = await prisma.event.findMany({
+    where: { createdAt: { gte: since(days) }, type: "brand_visit" },
+    select: { meta: true, visitorId: true }
+  });
+  const byBrand = new Map<string, { clicks: number; visitors: Set<string> }>();
+  for (const r of rows) {
+    const brand = /brand=([^;]*)/.exec(r.meta)?.[1] || "";
+    if (!brand) continue;
+    const e = byBrand.get(brand) || { clicks: 0, visitors: new Set<string>() };
+    e.clicks++;
+    if (r.visitorId) e.visitors.add(r.visitorId);
+    byBrand.set(brand, e);
+  }
+  const leads = Array.from(byBrand.entries())
+    .map(([brand, v]) => ({ brand, clicks: v.clicks, people: v.visitors.size }))
+    .sort((a, b) => b.clicks - a.clicks);
+  return { leads, total: rows.length };
 }
 
 /** Brand reputation from the platform's own reviews, not the retailers'. */
@@ -289,5 +331,108 @@ export async function getProductInterest(days: Window) {
       };
     }),
     byRetailer: tally(retailers.map((key) => ({ key })))
+  };
+}
+
+/**
+ * Health outcomes: of the people we gave guidance to, how many felt better.
+ *
+ * This is the only metric here that measures whether the product did any good,
+ * as opposed to how much it was used. It is also the one most easily overstated,
+ * so the shape of the return value is deliberately awkward to spin: the response
+ * rate sits next to the improvement rate, the "acted on it" and "didn't" groups
+ * are reported separately, and `tooEarly` suppresses percentages entirely until
+ * there are enough answers for one to mean anything.
+ *
+ * Also returns the anonymised anthropometry that consented users have agreed to
+ * contribute — foot dimensions by state and age band, with no identifiers. India
+ * has very little published foot-shape data, and brands size their lasts against
+ * Western averages; that gap is the reason a neutral platform is worth building.
+ */
+export async function getHealthOutcomes() {
+  const now = new Date();
+
+  const [episodes, consentCount, researchCount, redFlagUsers] = await Promise.all([
+    prisma.careEpisode.findMany({
+      select: {
+        followUpAt: true,
+        dismissedAt: true,
+        followUpDueAt: true,
+        changedFootwear: true,
+        painChange: true,
+        comfortRating: true,
+        needs: true
+      }
+    }),
+    prisma.user.count({ where: { healthConsentAt: { not: null } } }),
+    prisma.user.count({ where: { researchConsent: true } }),
+    prisma.healthLog
+      .findMany({
+        where: { OR: [{ numbness: true }, { woundOrSore: true }, { swelling: true }] },
+        select: { userId: true },
+        distinct: ["userId"]
+      })
+      .then((r) => r.length)
+  ]);
+
+  const summary = summarise(episodes, now);
+
+  // Which suggested feature shows up most in episodes that improved. Weak
+  // evidence on its own — reported as a count, never as "X% effective".
+  const needCounts: Record<string, { total: number; improvedCount: number }> = {};
+  for (const e of episodes) {
+    for (const need of e.needs.split(",").filter(Boolean)) {
+      needCounts[need] ||= { total: 0, improvedCount: 0 };
+      needCounts[need].total += 1;
+      if (e.followUpAt && improved(e.painChange)) needCounts[need].improvedCount += 1;
+    }
+  }
+
+  // Anonymised anthropometry, and only from people who ticked the research box.
+  const contributors = await prisma.user.findMany({
+    where: { researchConsent: true, footProfile: { isNot: null } },
+    select: {
+      state: true,
+      persona: true,
+      footProfile: {
+        select: { lengthMm: true, widthMm: true, archType: true, widthCategory: true }
+      }
+    }
+  });
+
+  const byState: Record<string, { n: number; meanLengthMm: number; wide: number }> = {};
+  for (const c of contributors) {
+    const f = c.footProfile!;
+    const key = c.state || "Not given";
+    byState[key] ||= { n: 0, meanLengthMm: 0, wide: 0 };
+    const b = byState[key];
+    b.meanLengthMm = (b.meanLengthMm * b.n + f.lengthMm) / (b.n + 1);
+    b.n += 1;
+    if (f.widthCategory === "wide") b.wide += 1;
+  }
+
+  return {
+    ...summary,
+    consentCount,
+    researchCount,
+    redFlagUsers,
+    needCounts: Object.entries(needCounts)
+      .map(([need, v]) => ({ need, ...v }))
+      .sort((a, b) => b.total - a.total),
+    anthropometry: {
+      contributors: contributors.length,
+      // Suppressed below a floor: a "state average" from two people is not a
+      // dataset, and publishing it would make it easy to identify them.
+      byState: Object.entries(byState)
+        .filter(([, v]) => v.n >= 5)
+        .map(([state, v]) => ({
+          state,
+          n: v.n,
+          meanLengthMm: Math.round(v.meanLengthMm),
+          widePct: Math.round((v.wide / v.n) * 100)
+        }))
+        .sort((a, b) => b.n - a.n),
+      suppressed: Object.values(byState).filter((v) => v.n < 5).length
+    }
   };
 }

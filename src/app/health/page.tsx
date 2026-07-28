@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Activity, Footprints, TrendingUp, HeartPulse, ArrowRight } from "lucide-react";
+import { HealthConsent } from "@/components/HealthConsent";
+import { FootHealthSummary, type Screening } from "@/components/FootHealthSummary";
+import { FollowUp } from "@/components/FollowUp";
+import { Activity, HeartPulse, AlertTriangle } from "lucide-react";
 
 type Log = {
   id: string;
@@ -11,199 +14,228 @@ type Log = {
   distanceKm: number;
   activity: string;
   painArea: string;
+  numbness: boolean;
+  woundOrSore: boolean;
+  swelling: boolean;
 };
 
 const ACTIVITIES = ["walk", "run", "gym", "standing"];
-const PAIN = ["none", "heel", "arch", "knee"];
+const PAIN = ["none", "heel", "arch", "forefoot", "knee"];
 
 export default function HealthPage() {
   const [authed, setAuthed] = useState<boolean | null>(null);
+  const [consented, setConsented] = useState(false);
   const [logs, setLogs] = useState<Log[]>([]);
+  const [screening, setScreening] = useState<Screening | null>(null);
+  const [hasFootProfile, setHasFootProfile] = useState(false);
+
   const [steps, setSteps] = useState("");
   const [distanceKm, setDistanceKm] = useState("");
   const [activity, setActivity] = useState("walk");
   const [painArea, setPainArea] = useState("none");
+  const [numbness, setNumbness] = useState(false);
+  const [woundOrSore, setWound] = useState(false);
+  const [swelling, setSwelling] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     const res = await fetch("/api/health");
-    if (res.status === 401) { setAuthed(false); return; }
-    const data = await res.json();
+    if (res.status === 401) {
+      setAuthed(false);
+      return;
+    }
+    const d = await res.json();
     setAuthed(true);
-    setLogs(data.logs);
-  }
-  useEffect(() => { load(); }, []);
+    setConsented(!!d.consented);
+    setLogs(d.logs || []);
+    setScreening(d.screening || null);
+    setHasFootProfile(!!d.hasFootProfile);
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
+    setError(null);
     setSaving(true);
     const res = await fetch("/api/health", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ steps, distanceKm, activity, painArea: painArea === "none" ? "" : painArea })
+      body: JSON.stringify({
+        steps,
+        distanceKm,
+        activity,
+        painArea: painArea === "none" ? "" : painArea,
+        numbness,
+        woundOrSore,
+        swelling
+      })
     });
+    const d = await res.json().catch(() => ({}));
     setSaving(false);
-    if (res.status === 401) { window.location.href = "/login?next=/health"; return; }
-    setSteps(""); setDistanceKm("");
-    load();
+    if (!res.ok) {
+      setError(d.error || "Could not save");
+      return;
+    }
+    setSteps("");
+    setDistanceKm("");
+    setNumbness(false);
+    setWound(false);
+    setSwelling(false);
+    await load();
   }
-
-  if (authed === false) {
-    return (
-      <div className="container-app grid min-h-[50vh] place-items-center py-10 text-center">
-        <div>
-          <HeartPulse className="mx-auto text-brand-500" size={40} />
-          <h1 className="mt-3 text-2xl font-extrabold text-slate-900">Health &amp; activity tracker</h1>
-          <p className="mt-1 max-w-md text-slate-500">
-            Log your daily walks, runs and any foot discomfort. Upanah.AI turns this
-            into personalized footwear recommendations.
-          </p>
-          <Link href="/login?next=/health" className="btn-primary mt-5">Login to start</Link>
-        </div>
-      </div>
-    );
-  }
-
-  const totals = logs.reduce(
-    (a, l) => ({ steps: a.steps + l.steps, km: a.km + l.distanceKm }),
-    { steps: 0, km: 0 }
-  );
-  const suggestions = buildSuggestions(logs);
 
   return (
     <div className="container-app py-10">
-      <div className="flex items-center gap-2">
-        <Activity className="text-brand-600" />
-        <h1 className="text-2xl font-extrabold text-slate-900">Health &amp; activity</h1>
+      <div className="mx-auto max-w-3xl text-center">
+        <span className="chip mx-auto"><HeartPulse size={13} /> Foot health</span>
+        <h1 className="mt-3 text-3xl font-extrabold text-slate-900">
+          Your feet, and what they&apos;re telling you
+        </h1>
+        <p className="mx-auto mt-2 max-w-xl text-slate-600">
+          Log how much you&apos;re on your feet and where it hurts. We turn that, plus
+          your measurements, into footwear features likely to help — and a straight
+          answer on when to stop reading a shoe website and see a clinician.
+        </p>
       </div>
 
-      {/* summary */}
-      <div className="mt-6 grid gap-4 sm:grid-cols-3">
-        <Stat icon={Footprints} label="Total steps (30d)" value={totals.steps.toLocaleString("en-IN")} />
-        <Stat icon={TrendingUp} label="Distance (30d)" value={`${totals.km.toFixed(1)} km`} />
-        <Stat icon={HeartPulse} label="Entries" value={String(logs.length)} />
-      </div>
+      {authed === false && (
+        <div className="mx-auto mt-8 max-w-md card p-6 text-center">
+          <p className="text-slate-600">
+            Sign in to keep a foot health log — it&apos;s tied to your account so the
+            summary can build up over time.
+          </p>
+          <Link href="/login?next=/health" className="btn-primary mt-4">Sign in</Link>
+        </div>
+      )}
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-[360px_1fr]">
-        {/* log form */}
-        <form onSubmit={add} className="card h-fit space-y-3 p-5">
-          <p className="font-bold text-slate-900">Log today&apos;s activity</p>
-          <input className="input" type="number" placeholder="Steps" value={steps} onChange={(e) => setSteps(e.target.value)} />
-          <input className="input" type="number" step="0.1" placeholder="Distance (km)" value={distanceKm} onChange={(e) => setDistanceKm(e.target.value)} />
-          <div>
-            <label className="mb-1 block text-sm text-slate-600">Activity</label>
-            <div className="flex flex-wrap gap-2">
-              {ACTIVITIES.map((a) => (
-                <button type="button" key={a} onClick={() => setActivity(a)} className={activity === a ? "btn-primary" : "btn-ghost"}>{a}</button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="mb-1 block text-sm text-slate-600">Any discomfort?</label>
-            <div className="flex flex-wrap gap-2">
-              {PAIN.map((p) => (
-                <button type="button" key={p} onClick={() => setPainArea(p)} className={painArea === p ? "btn-primary" : "btn-ghost"}>{p}</button>
-              ))}
-            </div>
-          </div>
-          <button className="btn-primary w-full" disabled={saving}>{saving ? "Saving…" : "Add entry"}</button>
-        </form>
+      {authed && (
+        <div className="mx-auto mt-8 grid max-w-5xl gap-6 lg:grid-cols-[1fr_1.2fr]">
+          <div className="space-y-4">
+            <HealthConsent onChange={(c) => { setConsented(c); void load(); }} />
 
-        {/* suggestions + history */}
-        <div className="space-y-6">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900">Personalized for you</h2>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              {suggestions.map((s) => (
-                <Link key={s.title} href={s.href} className="card group flex items-center justify-between p-4 transition hover:-translate-y-1">
-                  <div>
-                    <p className="font-semibold text-slate-900">{s.title}</p>
-                    <p className="text-sm text-slate-500">{s.reason}</p>
-                  </div>
-                  <ArrowRight size={16} className="text-slate-300 group-hover:text-brand-600" />
-                </Link>
-              ))}
-            </div>
-          </div>
+            {consented && (
+              <form onSubmit={add} className="card space-y-3 p-5">
+                <p className="flex items-center gap-2 font-bold text-slate-900">
+                  <Activity size={16} /> Log today
+                </p>
 
-          <div>
-            <h2 className="text-lg font-bold text-slate-900">Recent entries</h2>
-            <div className="mt-3 overflow-hidden rounded-2xl ring-1 ring-slate-200">
-              {logs.length === 0 && <p className="p-4 text-sm text-slate-500">No entries yet.</p>}
-              {logs.map((l, i) => (
-                <div key={l.id} className={`flex items-center justify-between p-3 text-sm ${i % 2 ? "bg-white" : "bg-slate-50/60"}`}>
-                  <span className="text-slate-500">{new Date(l.date).toLocaleDateString("en-IN")}</span>
-                  <span className="font-medium capitalize text-slate-700">{l.activity}</span>
-                  <span className="text-slate-600">{l.steps.toLocaleString("en-IN")} steps</span>
-                  <span className="text-slate-600">{l.distanceKm} km</span>
-                  <span className={l.painArea ? "text-rose-500" : "text-emerald-500"}>{l.painArea || "no pain"}</span>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="text-xs text-slate-500">Steps</span>
+                    <input
+                      className="input mt-1" type="number" min={0} placeholder="6000"
+                      value={steps} onChange={(e) => setSteps(e.target.value)}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs text-slate-500">Distance (km)</span>
+                    <input
+                      className="input mt-1" type="number" min={0} step="0.1" placeholder="4.5"
+                      value={distanceKm} onChange={(e) => setDistanceKm(e.target.value)}
+                    />
+                  </label>
                 </div>
-              ))}
-            </div>
+
+                <label className="block">
+                  <span className="text-xs text-slate-500">Mostly</span>
+                  <select className="input mt-1" value={activity} onChange={(e) => setActivity(e.target.value)}>
+                    {ACTIVITIES.map((a) => (
+                      <option key={a} value={a}>{a[0].toUpperCase() + a.slice(1)}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="text-xs text-slate-500">Any pain today?</span>
+                  <select className="input mt-1" value={painArea} onChange={(e) => setPainArea(e.target.value)}>
+                    {PAIN.map((p) => (
+                      <option key={p} value={p}>
+                        {p === "none" ? "No pain" : p[0].toUpperCase() + p.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {/* Asked plainly and separately, because these change the answer
+                    entirely — they route to a clinician, not to a shoe. */}
+                <fieldset className="rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200">
+                  <legend className="flex items-center gap-1.5 px-1 text-xs font-bold text-amber-900">
+                    <AlertTriangle size={12} /> Any of these today?
+                  </legend>
+                  {([
+                    ["numbness", numbness, setNumbness, "Numbness or loss of feeling"],
+                    ["wound", woundOrSore, setWound, "A sore, blister or wound that isn't healing"],
+                    ["swelling", swelling, setSwelling, "Swelling, especially on one side"]
+                  ] as const).map(([k, val, setter, label]) => (
+                    <label key={k} className="mt-1.5 flex cursor-pointer items-start gap-2">
+                      <input
+                        type="checkbox" checked={val}
+                        onChange={(e) => (setter as (v: boolean) => void)(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded border-amber-300"
+                      />
+                      <span className="text-xs text-amber-900">{label}</span>
+                    </label>
+                  ))}
+                  <p className="mt-2 text-[11px] leading-snug text-amber-800">
+                    If you tick any of these we&apos;ll point you to a clinician rather
+                    than suggest footwear.
+                  </p>
+                </fieldset>
+
+                {error && <p className="text-sm text-rose-600">{error}</p>}
+                <button className="btn-primary w-full" disabled={saving}>
+                  {saving ? "Saving…" : "Add to my log"}
+                </button>
+              </form>
+            )}
+
+            {consented && logs.length > 0 && (
+              <div className="card p-5">
+                <p className="font-bold text-slate-900">Recent days</p>
+                <ul className="mt-3 divide-y divide-slate-100">
+                  {logs.slice(0, 8).map((l) => (
+                    <li key={l.id} className="flex items-center justify-between py-2 text-sm">
+                      <span className="text-slate-600">
+                        {new Date(l.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                        {" · "}{l.activity}
+                      </span>
+                      <span className="flex items-center gap-2 text-slate-500">
+                        {l.distanceKm > 0 && <span>{l.distanceKm} km</span>}
+                        {l.painArea && (
+                          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-800">
+                            {l.painArea}
+                          </span>
+                        )}
+                        {(l.numbness || l.woundOrSore || l.swelling) && (
+                          <span className="rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">
+                            flagged
+                          </span>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            {consented && <FollowUp onDone={() => void load()} />}
+            {consented && screening ? (
+              <FootHealthSummary screening={screening} hasFootProfile={hasFootProfile} />
+            ) : (
+              <div className="card p-6 text-sm text-slate-500">
+                Your foot health summary appears here once you&apos;ve agreed to health
+                logging and added a day or a foot measurement.
+              </div>
+            )}
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
-}
-
-function Stat({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
-  return (
-    <div className="card flex items-center gap-3 p-4">
-      <span className="grid h-11 w-11 place-items-center rounded-xl bg-brand-50 text-brand-600"><Icon size={18} /></span>
-      <div>
-        <p className="text-xs text-slate-500">{label}</p>
-        <p className="text-lg font-extrabold text-slate-900">{value}</p>
-      </div>
-    </div>
-  );
-}
-
-function buildSuggestions(logs: Log[]) {
-  const out: { title: string; reason: string; href: string }[] = [];
-  const painCounts: Record<string, number> = {};
-  let runCount = 0, walkCount = 0, totalKm = 0;
-  for (const l of logs) {
-    if (l.painArea) painCounts[l.painArea] = (painCounts[l.painArea] || 0) + 1;
-    if (l.activity === "run") runCount++;
-    if (l.activity === "walk") walkCount++;
-    totalKm += l.distanceKm;
-  }
-
-  if ((painCounts["heel"] || 0) + (painCounts["arch"] || 0) > 0) {
-    out.push({
-      title: "Arch-support / orthopedic shoes",
-      reason: "You've logged heel or arch discomfort — extra support can help.",
-      href: "/search?category=orthopedic"
-    });
-  }
-  if (painCounts["knee"]) {
-    out.push({
-      title: "Max-cushion shock absorbers",
-      reason: "Knee discomfort noted — cushioned soles reduce impact.",
-      href: "/search?q=cushioned+shock+absorption+running"
-    });
-  }
-  if (runCount >= 2 || totalKm > 15) {
-    out.push({
-      title: "Performance running shoes",
-      reason: "You run regularly — lightweight, responsive shoes suit you.",
-      href: "/search?category=running"
-    });
-  }
-  if (walkCount >= 2) {
-    out.push({
-      title: "Comfort walking shoes",
-      reason: "Frequent walker — slip-on comfort keeps you going longer.",
-      href: "/search?category=walking"
-    });
-  }
-  if (out.length === 0) {
-    out.push({
-      title: "Start with all-day comfort",
-      reason: "Log a few activities and we'll tailor picks to your routine.",
-      href: "/search?category=casual"
-    });
-  }
-  return out.slice(0, 4);
 }

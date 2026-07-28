@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 import { prisma } from "@/lib/db";
 import { SITE } from "@/lib/seo";
 import { DISPLAYABLE } from "@/lib/products";
+import { BRAND_DIRECTORY, slugify } from "@/lib/brandDirectory";
 
 export const dynamic = "force-dynamic";
 
@@ -20,9 +21,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/match`, changeFrequency: "monthly", priority: 0.8 },
     { url: `${base}/try-on`, changeFrequency: "monthly", priority: 0.8 },
     { url: `${base}/health`, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${base}/foot-health`, changeFrequency: "monthly", priority: 0.8 },
     { url: `${base}/brands`, changeFrequency: "weekly", priority: 0.8 },
     { url: `${base}/size-chart`, changeFrequency: "monthly", priority: 0.8 },
     { url: `${base}/community`, changeFrequency: "daily", priority: 0.8 },
+    { url: `${base}/data-and-privacy`, changeFrequency: "monthly", priority: 0.5 },
     { url: `${base}/login`, changeFrequency: "yearly", priority: 0.3 }
   ];
 
@@ -43,7 +46,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   try {
     const [rows, brands, questions] = await Promise.all([
       prisma.product.findMany({ where: DISPLAYABLE, select: { slug: true, createdAt: true } }),
-      prisma.product.groupBy({ by: ["brand"], where: DISPLAYABLE }),
+      Promise.resolve(BRAND_DIRECTORY.map((b) => ({ brand: b.name }))),
       // Community threads are genuine long-tail SEO/AEO surface: real questions
       // in the words shoppers actually use.
       prisma.question.findMany({
@@ -61,7 +64,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         priority: 0.8
       })),
       ...brands.map((b) => ({
-        url: `${base}/brands/${encodeURIComponent(b.brand)}`,
+        url: `${base}/brands/${slugify(b.brand)}`,
         changeFrequency: "weekly" as const,
         priority: 0.7
       })),

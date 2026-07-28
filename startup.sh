@@ -26,16 +26,38 @@ if [ ! -f node_modules/.package-lock.json ]; then
   npm install --no-audit --no-fund
 fi
 
-# Generate the Prisma client only when it's actually missing.
+# Make sure the Prisma client can actually load its query engine, and repair it
+# here if it can't.
 #
-# `npm run build` runs `prisma generate && next build`, and prisma generate
-# rewrites node_modules/.prisma by renaming the query engine into place. /home is
-# an SMB network mount, so if any process still holds that .so the rename fails
-# with ENOENT, the build dies, the container restarts, and it loops forever —
-# taking the site down. Generating only when absent removes that race.
-if [ ! -f node_modules/.prisma/client/index.js ]; then
-  echo "[startup] generating Prisma client..."
-  npx --no-install prisma generate || npx prisma generate
+# Boot is the only safe moment for this. `prisma generate` puts the engine in
+# place with a rename, and /home is an SMB mount: while the app is running it
+# holds an open handle on that .so, so the rename fails with ENOENT and — worse —
+# SMB leaves the filename in a delete-pending state where it cannot be recreated
+# at all. Repairing from outside the app is therefore impossible; repairing here,
+# before `npm start`, works because nothing has the file open yet.
+#
+# Checking that the client *loads* rather than that a file exists matters: a
+# half-finished generate leaves index.js present but the engine missing, which
+# looks fine to a file test and fails on the first query.
+client_loads() {
+  node -e "
+    const { PrismaClient } = require('@prisma/client');
+    const p = new PrismaClient();
+    p.\$queryRawUnsafe('SELECT 1').then(() => process.exit(0)).catch(() => process.exit(1));
+  " >/dev/null 2>&1
+}
+
+if ! client_loads; then
+  echo "[startup] Prisma client cannot reach its engine — regenerating"
+  rm -rf node_modules/.prisma node_modules/.prisma-old node_modules/.prisma/client.bak
+  npx --no-install prisma generate 2>&1 | tail -2 || npx prisma generate 2>&1 | tail -2
+  if client_loads; then
+    echo "[startup] Prisma client repaired"
+  else
+    echo "[startup] WARNING: Prisma client still broken — database pages will fail"
+  fi
+else
+  echo "[startup] Prisma client ok"
 fi
 
 if [ ! -f .next/BUILD_ID ]; then

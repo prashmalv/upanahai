@@ -9,11 +9,16 @@ import {
   getBrandSentiment,
   getProductInterest,
   getHiddenProducts,
+  getBrandLeads,
+  getHealthOutcomes,
   type Window
 } from "@/lib/analytics";
 import { StatTile, BarList, Sparkline } from "@/components/admin/Charts";
 import { LogoutButton } from "@/components/LogoutButton";
-import { ShieldCheck, Users, Search, MessageSquare, TrendingUp, ImageOff } from "lucide-react";
+import { MIN_EPISODES_FOR_RATE } from "@/lib/outcomes";
+import {
+  ShieldCheck, Users, Search, MessageSquare, TrendingUp, ImageOff, ArrowUpRight, HeartPulse
+} from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -35,14 +40,18 @@ export default async function AdminPage({
     ? Number(searchParams.days)
     : 30) as Window;
 
-  const [overview, geo, demand, trend, brands, interest, catalog] = await Promise.all([
+  const [overview, geo, demand, trend, brands, interest, catalog, leads, outcomes] = await Promise.all([
     getOverview(days),
     getGeography(days),
     getDemand(days),
     getTrend(days),
     getBrandSentiment(),
     getProductInterest(days),
-    getHiddenProducts()
+    getHiddenProducts(),
+    getBrandLeads(days),
+    // Not windowed: an outcome loop that only counted the last 30 days would
+    // discard every follow-up the moment it became answerable.
+    getHealthOutcomes()
   ]);
 
   const engagementRate =
@@ -293,6 +302,162 @@ export default async function AdminPage({
         )}
       </div>
 
+      {/* leads delivered to brands */}
+      <h2 className="mt-12 flex items-center gap-2 text-lg font-black text-slate-900">
+        <ArrowUpRight size={18} className="text-indigo-600" /> Leads sent to brands
+      </h2>
+      <p className="mt-1 text-sm text-slate-500">
+        {leads.total.toLocaleString("en-IN")} click-throughs to brand stores in the
+        last {days} days. This is what a brand gets from being listed — traffic from
+        someone who already knows their size and has read other buyers&apos; verdicts.
+      </p>
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <BarList
+          title="Leads by brand"
+          subtitle="Click-throughs to the brand's own store"
+          rows={leads.leads.map((l) => ({ key: l.brand, count: l.clicks }))}
+          empty="No brand click-throughs yet"
+        />
+        <BarList
+          title="Reach per brand"
+          subtitle="Distinct people, not repeat clicks"
+          rows={leads.leads.map((l) => ({ key: l.brand, count: l.people }))}
+          empty="No brand click-throughs yet"
+        />
+      </div>
+
+      {/* health outcomes — the only section that measures whether we helped */}
+      <h2 className="mt-12 flex items-center gap-2 text-lg font-black text-slate-900">
+        <HeartPulse size={18} className="text-indigo-600" /> Health outcomes
+      </h2>
+      <p className="mt-1 text-sm text-slate-500">
+        Four weeks after we give someone footwear guidance for logged pain, we ask
+        two questions: did you change your footwear, and is the pain better. This is
+        the only number here that says whether the product did any good.
+      </p>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatTile label="Health consents" value={outcomes.consentCount} sub="people who agreed to health logging" />
+        <StatTile label="Episodes opened" value={outcomes.opened} sub="guidance given for logged pain" accent />
+        <StatTile
+          label="Follow-ups answered"
+          value={outcomes.answered}
+          sub={
+            outcomes.responseRatePct === null
+              ? "none due yet"
+              : `${outcomes.responseRatePct}% of those asked`
+          }
+        />
+        <StatTile
+          label="Referred to a clinician"
+          value={outcomes.redFlagUsers}
+          sub="people who reported a red-flag symptom"
+        />
+      </div>
+
+      {outcomes.tooEarly ? (
+        <p className="mt-4 rounded-xl bg-amber-50 p-4 text-sm leading-relaxed text-amber-900 ring-1 ring-amber-200">
+          <strong>Not enough answers to quote a rate yet.</strong> {outcomes.answered} of the{" "}
+          {MIN_EPISODES_FOR_RATE} needed. Reporting a percentage off a handful of replies
+          would be a number that sounds like evidence and isn&apos;t — the counts below are
+          what we actually have.
+        </p>
+      ) : (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="card p-5">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+              Acted on the guidance
+            </p>
+            <p className="mt-1 text-3xl font-black text-emerald-700">
+              {outcomes.actedImprovedPct}%
+            </p>
+            <p className="mt-1 text-sm text-slate-500">
+              reported less pain, of {outcomes.acted} who changed their footwear
+            </p>
+          </div>
+          <div className="card p-5">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+              Did not change footwear
+            </p>
+            <p className="mt-1 text-3xl font-black text-slate-700">
+              {outcomes.notActedImprovedPct ?? "—"}%
+            </p>
+            <p className="mt-1 text-sm text-slate-500">
+              reported less pain, of {outcomes.notActed} — the comparison that matters
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <BarList
+          title="What people reported at four weeks"
+          rows={Object.entries(outcomes.byPainChange).map(([key, count]) => ({
+            key: cap(key),
+            count
+          }))}
+          empty="No follow-ups answered yet"
+        />
+        <BarList
+          title="Features suggested, by episode"
+          rows={outcomes.needCounts.map((n) => ({
+            key: cap(n.need.replace(/-/g, " ")),
+            count: n.total
+          }))}
+          empty="No guidance given yet"
+        />
+      </div>
+
+      <div className="mt-4 card p-5">
+        <p className="font-bold text-slate-900">
+          Anonymised foot anthropometry ({outcomes.anthropometry.contributors} contributors)
+        </p>
+        <p className="mt-1 text-sm text-slate-500">
+          Only from users who separately opted in to research use. India has almost no
+          published foot-shape data, and brands size their lasts against Western
+          averages — this is the dataset that gap creates.
+        </p>
+        {outcomes.anthropometry.byState.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-500">
+            Nothing to show yet. States with fewer than five contributors are withheld,
+            because an average over two people is not a statistic and could identify
+            them. {outcomes.anthropometry.suppressed > 0 && `${outcomes.anthropometry.suppressed} state(s) currently below that floor.`}
+          </p>
+        ) : (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="p-3">State</th>
+                  <th className="p-3">Contributors</th>
+                  <th className="p-3">Mean foot length</th>
+                  <th className="p-3">Wide-footed</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {outcomes.anthropometry.byState.map((s) => (
+                  <tr key={s.state}>
+                    <td className="p-3 font-semibold text-slate-900">{s.state}</td>
+                    <td className="p-3 text-slate-600">{s.n}</td>
+                    <td className="p-3 text-slate-600">{s.meanLengthMm} mm</td>
+                    <td className="p-3 text-slate-600">{s.widePct}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <p className="mt-4 rounded-xl bg-slate-50 p-4 text-xs leading-relaxed text-slate-500">
+        <strong className="text-slate-700">What this evidence is worth:</strong>{" "}
+        self-reported, unblinded, and with no control group — people who felt better
+        are also likelier to answer. It is real enough to steer the product and to
+        show that outcomes are being measured at all, and nowhere near enough to
+        claim a clinical effect. Anyone quoting it should quote the response rate
+        beside it.
+      </p>
+
       {/* catalog health */}
       <h2 className="mt-12 flex items-center gap-2 text-lg font-black text-slate-900">
         <ImageOff size={18} className="text-indigo-600" /> Catalog health
@@ -324,7 +489,7 @@ export default async function AdminPage({
                   <td className="p-3 font-semibold text-slate-900">
                     {h.brand} {h.name}
                   </td>
-                  <td className="p-3 text-slate-600">{h.imageNote || "—"}</td>
+                  <td className="p-3 text-slate-600">{h.reason || "—"}</td>
                   <td className="p-3 whitespace-nowrap text-xs text-slate-400">
                     {h.imageCheckedAt
                       ? h.imageCheckedAt.toLocaleDateString("en-IN", {
