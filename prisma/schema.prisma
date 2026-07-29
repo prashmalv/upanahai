@@ -371,3 +371,29 @@ model CareEpisode {
   @@index([userId])
   @@index([followUpDueAt])
 }
+
+// ---------------------------------------------------------------------------
+// A brand's own best-seller list, fetched from the brand's own storefront.
+//
+// This is the only "popular right now" claim on the platform that we can make
+// without inventing anything: the brand publishes the collection, we quote it and
+// say whose claim it is and when we read it. We store names, prices and links —
+// never images, because those are the brand's to publish, not ours.
+//
+// Owned by scripts/refresh-brand-picks.ts. If a fetch fails the previous rows
+// stay, and staleness is visible because fetchedAt is shown to the reader.
+// ---------------------------------------------------------------------------
+model BrandPick {
+  id             String   @id @default(cuid())
+  brand          String
+  title          String
+  url            String
+  priceInr       Int      @default(0)
+  position       Int      @default(0)
+  // The brand's own name for the collection, quoted in the UI.
+  collectionName String
+  fetchedAt      DateTime @default(now())
+
+  @@unique([brand, url])
+  @@index([brand, position])
+}

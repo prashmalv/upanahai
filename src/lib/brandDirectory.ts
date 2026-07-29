@@ -20,6 +20,14 @@
  *   large brands answer bots with HTTP 403 (Cloudflare/Akamai); those are real
  *   and are kept. Two candidates were dropped after they turned out to resolve
  *   to domain-parking pages rather than the brand.
+ * - Whether a big brand's WAF refuses us turns out to depend on the HTTP client,
+ *   not on the brand: curl is refused by Nike, Asics, Adidas, Vans and New
+ *   Balance where Node's fetch is waved through, and Dr. Martens does the
+ *   reverse. So we do NOT record per-brand "this store blocks visitors" flags —
+ *   two probes disagree often enough that any such flag would be wrong for
+ *   several brands at any given moment, and a false warning drives shoppers away
+ *   from a store that works. Instead every card shows the store's plain address,
+ *   which is useful regardless and true always.
  * - `priceBand` is a deliberately broad indication, not a price claim.
  * - `knownFor` describes what the brand is generally recognised for. It is not a
  *   ranking and not an endorsement — the neutral judgement on this platform
@@ -209,11 +217,12 @@ export const BRAND_DIRECTORY: DirectoryBrand[] = [
 
   // ---- Indian heritage, leather & formal --------------------------------
   {
-    name: "Bata", url: "https://www.bata.com/in/", indiaStore: true, origin: "Indian",
+    name: "Bata", url: "https://www.bata.com/in/", indiaStore: true, origin: "Global",
     priceBand: "value", fromPrice: 799,
     categories: ["formal", "school", "casual", "comfort", "sandals"],
     audiences: ["men", "women", "kids"],
-    knownFor: "The default school shoe and affordable formals; the widest physical store network in India."
+    knownFor: "The default school shoe and affordable formals; the widest physical store network in India.",
+    note: "Czech in origin (Zlín, 1894), but Bata India has been listed here since 1973 and manufactures most of what it sells in India."
   },
   {
     name: "Metro Shoes", url: "https://www.metroshoes.com/", indiaStore: true, origin: "Indian",
@@ -398,4 +407,19 @@ export function filterBrands(f: BrandFilter): DirectoryBrand[] {
       return false;
     return true;
   });
+}
+
+/**
+ * The bare address of a brand's store, for showing to a shopper who needs to type
+ * it themselves. Strips the scheme, "www." and any trailing path noise so it reads
+ * like something a person would say out loud.
+ */
+export function storeAddress(url: string): string {
+  try {
+    const u = new URL(url);
+    const path = u.pathname.replace(/\/$/, "");
+    return (u.hostname.replace(/^www\./, "") + path) || u.hostname;
+  } catch {
+    return url;
+  }
 }

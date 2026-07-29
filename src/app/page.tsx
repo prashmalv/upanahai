@@ -9,6 +9,7 @@ import {
   PersonStanding, Baby, Trophy, Footprints, ArrowRight, ChevronDown
 } from "lucide-react";
 import { CapabilityTiles } from "@/components/home/CapabilityTiles";
+import { PulseStrip } from "@/components/home/PulseStrip";
 import { JsonLd } from "@/components/JsonLd";
 import { SITE, STEPS, FAQS, faqJsonLd, howToJsonLd, breadcrumbJsonLd } from "@/lib/seo";
 
@@ -252,6 +253,11 @@ export default async function HomePage() {
           ))}
         </div>
       </section>
+
+      {/* DEMAND BOARD / QUIZ — real demand data when we have it, the sizing quiz
+          when we don't. Placed above the product rails because curiosity is what
+          brings someone back, and because it argues for measuring first. */}
+      <PulseStrip />
 
       {/* FEATURED */}
       <Section title="Top rated right now" subtitle="Highest rated across all retailers" href="/search">

@@ -6,7 +6,7 @@ import { JsonLd } from "@/components/JsonLd";
 import { SITE } from "@/lib/seo";
 import {
   BRAND_DIRECTORY, filterBrands, slugify, ALL_CATEGORIES,
-  CATEGORY_LABEL, PRICE_BANDS,
+  CATEGORY_LABEL, PRICE_BANDS, storeAddress,
   type BrandCategory, type PriceBand
 } from "@/lib/brandDirectory";
 import { ArrowUpRight, ShieldCheck, MapPin, Globe } from "lucide-react";
@@ -251,12 +251,18 @@ export default async function BrandsPage({
                   <a
                     href={`/api/brand-visit?b=${slugify(b.name)}&from=directory`}
                     target="_blank"
-                    rel="noopener noreferrer nofollow sponsored"
+                    rel="noopener noreferrer nofollow"
                     className="btn-primary flex-1 justify-center text-xs"
                   >
                     Visit store <ArrowUpRight size={13} />
                   </a>
                 </div>
+
+                {/* The plain address, always. Some brands' bot protection refuses a
+                    visitor arriving from another site, and it is not predictable
+                    which ones — so rather than accuse specific brands, give every
+                    shopper the address they can type if a click dead-ends. */}
+                <p className="mt-2 text-[11px] text-slate-400">{storeAddress(b.url)}</p>
               </div>
             );
           })}

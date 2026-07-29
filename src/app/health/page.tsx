@@ -100,6 +100,12 @@ export default function HealthPage() {
           your measurements, into footwear features likely to help — and a straight
           answer on when to stop reading a shoe website and see a clinician.
         </p>
+        <p className="mt-3 text-sm text-slate-500">
+          <Link href="/foot-health" className="font-semibold text-brand-600 hover:underline">
+            How this screening works, and what it can&apos;t do
+          </Link>{" "}
+          — worth two minutes before you rely on it.
+        </p>
       </div>
 
       {authed === false && (

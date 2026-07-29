@@ -32,5 +32,15 @@ export async function GET(req: NextRequest) {
     meta: `brand=${brand.name};from=${from.slice(0, 40)}`
   });
 
-  return NextResponse.redirect(brand.url);
+  // Send no referrer with the redirect.
+  //
+  // Several brand stores — Asics and Adidas among them — sit behind a WAF that
+  // rejects requests arriving from a site it doesn't recognise, so the shopper
+  // lands on an access-denied page instead of the shop. Stripping the referrer
+  // makes the visit indistinguishable from someone typing the address, which is
+  // exactly what it is: we are pointing at the brand, not framing or proxying it.
+  // We keep our own count of the lead server-side anyway, so nothing is lost.
+  const res = NextResponse.redirect(brand.url);
+  res.headers.set("Referrer-Policy", "no-referrer");
+  return res;
 }

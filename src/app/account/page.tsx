@@ -9,6 +9,7 @@ import { ProductCard } from "@/components/ProductCard";
 import { StarRating } from "@/components/StarRating";
 import { LogoutButton } from "@/components/LogoutButton";
 import { ChangePasswordForm } from "@/components/ChangePasswordForm";
+import { getContribution, LEVELS } from "@/lib/contribution";
 import {
   User2, Ruler, Heart, Activity, MessageSquare, Star, ShieldCheck,
   BadgeCheck, ArrowRight, Sparkles
@@ -25,7 +26,8 @@ export default async function AccountPage() {
   const session = await getSession();
   if (!session) redirect("/login?next=/account");
 
-  const [user, foot, wishlist, logs, myQuestions, myAnswers, myBrandReviews, myProductReviews] =
+  const [user, foot, wishlist, logs, myQuestions, myAnswers, myBrandReviews, myProductReviews,
+         contribution] =
     await Promise.all([
       prisma.user.findUnique({ where: { id: session.userId } }),
       prisma.footProfile.findUnique({ where: { userId: session.userId } }),
@@ -52,7 +54,8 @@ export default async function AccountPage() {
         where: { userId: session.userId },
         orderBy: { createdAt: "desc" },
         include: { product: { select: { brand: true, name: true, slug: true } } }
-      })
+      }),
+      getContribution(session.userId)
     ]);
 
   // ---- personalised picks -------------------------------------------------
@@ -176,6 +179,73 @@ export default async function AccountPage() {
           </span>
         </Link>
       </div>
+
+      {/* contribution standing — what this person has put in, and the single most
+          useful thing they could do next. No streaks: rewarding turning up rather
+          than helping is how a review section fills with noise. */}
+      <section className="mt-8 rounded-2xl bg-slate-900 p-6 md:p-7">
+        <div className="flex flex-wrap items-start justify-between gap-6">
+          <div className="min-w-[240px]">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-300">
+              Your standing
+            </p>
+            <p className="mt-1 text-2xl font-black text-white">{contribution.level.name}</p>
+            <p className="mt-1 max-w-sm text-sm text-slate-300">
+              {contribution.level.meaning}
+            </p>
+            {contribution.next && (
+              <p className="mt-3 text-sm text-slate-400">
+                {contribution.toNext} more{" "}
+                {contribution.toNext === 1 ? "contribution" : "contributions"} to{" "}
+                <span className="font-semibold text-slate-200">
+                  {contribution.next.name}
+                </span>
+                .
+              </p>
+            )}
+          </div>
+
+          <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {[
+              ["Brand reviews", contribution.brandReviews],
+              ["Shoe reviews", contribution.productReviews],
+              ["Questions", contribution.questions],
+              ["Answers", contribution.answers]
+            ].map(([label, n]) => (
+              <div key={String(label)}>
+                <dd className="text-2xl font-black text-white">{n as number}</dd>
+                <dt className="text-xs text-slate-400">{label}</dt>
+              </div>
+            ))}
+          </dl>
+        </div>
+
+        {/* the level ladder, so the next step is legible rather than mysterious */}
+        <div className="mt-5 flex flex-wrap gap-x-4 gap-y-1.5">
+          {LEVELS.map((l) => (
+            <span
+              key={l.name}
+              className={`text-xs ${
+                contribution.total >= l.at
+                  ? "font-bold text-indigo-300"
+                  : "text-slate-500"
+              }`}
+            >
+              {l.name}
+              <span className="ml-1 text-slate-600">{l.at}+</span>
+            </span>
+          ))}
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-center gap-3 rounded-xl bg-white/5 p-4">
+          <p className="min-w-[220px] flex-1 text-sm text-slate-300">
+            {contribution.suggestion.why}
+          </p>
+          <Link href={contribution.suggestion.href} className="btn-primary">
+            {contribution.suggestion.label}
+          </Link>
+        </div>
+      </section>
 
       {/* personalised picks */}
       <section className="mt-12">

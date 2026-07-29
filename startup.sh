@@ -109,5 +109,32 @@ echo "[startup] validating product images..."
 npx --no-install tsx prisma/validate-images.ts || npx tsx prisma/validate-images.ts || \
   echo "[startup] image validation failed — site still starting"
 
+# Refresh each brand's own best-seller list — but only when ours is a week stale.
+#
+# Two reasons for the guard. It hits five brands' storefronts, and doing that on
+# every restart would be rude to them for no benefit; and a failed fetch leaves the
+# previous rows in place, so a weekly cadence degrades gracefully rather than
+# emptying the page. The freshness date is shown to readers either way, so stale
+# data is visible rather than silently passed off as current.
+STALE_DAYS=7
+NEEDS_PICKS=$(npx --no-install tsx -e "
+import { PrismaClient } from '@prisma/client';
+const p = new PrismaClient();
+p.brandPick.findFirst({ orderBy: { fetchedAt: 'desc' }, select: { fetchedAt: true } })
+  .then((r) => {
+    const ageDays = r ? (Date.now() - r.fetchedAt.getTime()) / 86400000 : 999;
+    console.log(ageDays > ${STALE_DAYS} ? 'yes' : 'no');
+    return p.\$disconnect();
+  })
+  .catch(() => { console.log('yes'); return p.\$disconnect(); });
+" 2>/dev/null | tail -1)
+if [ "$NEEDS_PICKS" = "yes" ]; then
+  echo "[startup] refreshing brand best-seller lists..."
+  npx --no-install tsx scripts/refresh-brand-picks.ts || \
+    echo "[startup] brand pick refresh failed — keeping the previous lists"
+else
+  echo "[startup] brand best-seller lists are current — skipping refresh"
+fi
+
 echo "[startup] starting Next.js on port ${PORT:-8080}"
 exec npm start

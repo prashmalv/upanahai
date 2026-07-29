@@ -271,6 +271,13 @@ ok("new password works", st == 200, f"{st}")
 st, _, _ = Client().go("/api/auth/login", {"email": email, "password": "SanityPass123"})
 ok("old password dead", st == 401, f"{st}")
 
+# Contribution standing: visible to the contributor, and to readers weighing advice.
+st, body, _ = shopper.page("/account")
+ok("account shows a contribution standing", "Your standing" in body)
+ok("standing suggests one concrete next step", "Measure your feet" in body or "Rate a brand" in body
+   or "Answer someone" in body or "Review another brand" in body)
+ok("nothing rewards merely logging in", "streak" not in body.lower())
+
 print("\n=== privilege boundaries ===")
 st, _, loc = shopper.go("/admin", follow=False)
 ok("shopper cannot open /admin", "/admin" != urllib.parse.urlparse(loc).path, f"{st} -> {loc}")
@@ -303,6 +310,30 @@ if ADMIN_PW:
         st, _, _ = admin.go(f"/admin?days={w}")
         ok(f"dashboard window {w}d", st == 200, f"{st}")
 
+print("\n=== demand board & quiz ===")
+st, body, _ = anon.page("/trends")
+ok("trends page loads", st == 200, f"status {st}")
+ok("trends refuses to imply sales data",
+   "Nobody publishes footwear sales figures for India" in body or "not a sales chart" in body.lower(),
+   body[:120])
+ok("trends explains the people floor", "different people are behind it" in body)
+ok("quiz is present with a sourced answer", "Source —" in body or "source" in body.lower())
+# The board must never publish a row backed by fewer people than the floor.
+import re as _re2
+counts = [int(n) for n in _re2.findall(r">(\d+) (?:person|people)<", body)]
+ok("no published row is below the people floor",
+   all(c >= 2 for c in counts), f"counts={counts[:10]}")
+ok("home page carries the board or the quiz",
+   any(t in anon.page("/")[1] for t in ["What India is actually asking for",
+                                        "Most people get shoe sizing wrong"]))
+
+# Brand-authored best sellers: the attribution is the feature, so assert it.
+st, body, _ = anon.page("/trends")
+ok("brand best-seller lists are attributed to the brand's own collection",
+   "Best Sellers" in body and "read" in body, "")
+ok("prices are not passed off as live", "will have moved since" in body)
+ok("no brand product photographs are republished", "no product photographs" in body)
+
 print("\n=== brand directory ===")
 st, body, _ = anon.page("/brands")
 ok("brand directory loads", st == 200, f"status {st}")
@@ -310,6 +341,9 @@ import re as _re
 slugs = sorted(set(_re.findall(r"/api/brand-visit\?b=([a-z0-9-]+)", body)))
 ok("directory lists many brands", len(slugs) >= 25, f"{len(slugs)} found")
 ok("directory states its neutrality", "don't take payment for a listing" in body)
+ok("directory shows a plain store address to fall back on", ".com" in body or ".in" in body)
+# Outbound links must not be declared paid placements — the page claims neutrality.
+ok("outbound links are not marked sponsored", "sponsored" not in body)
 
 for f_ in ["category=leather", "category=comfort", "category=school", "audience=kids",
            "price=value", "origin=Indian", "category=running&price=value"]:

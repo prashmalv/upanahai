@@ -9,8 +9,10 @@ import { StarRating } from "@/components/StarRating";
 import { BrandReviewForm } from "@/components/BrandReviewForm";
 import { JsonLd } from "@/components/JsonLd";
 import { SITE, breadcrumbJsonLd } from "@/lib/seo";
+import { contributionCounts, levelFor } from "@/lib/contribution";
+import { BrandPicks } from "@/components/BrandPicks";
 import {
-  brandBySlug, slugify, CATEGORY_LABEL, PRICE_BANDS, BRAND_DIRECTORY
+  brandBySlug, slugify, CATEGORY_LABEL, PRICE_BANDS, BRAND_DIRECTORY, storeAddress
 } from "@/lib/brandDirectory";
 import { ArrowUpRight, MapPin, Globe, Info, Ruler } from "lucide-react";
 
@@ -65,6 +67,11 @@ export default async function BrandPage({ params }: { params: { brand: string } 
     prisma.brandFeedback.findMany({ where: { brand: dir.name }, orderBy: { createdAt: "desc" } }),
     getSession()
   ]);
+
+  // One grouped query for every review author, not one per review.
+  const authorCounts = await contributionCounts(
+    reviews.map((r) => r.userId).filter((id): id is string => !!id)
+  );
 
   const avg = (ns: number[]) =>
     ns.length ? Number((ns.reduce((a, b) => a + b, 0) / ns.length).toFixed(1)) : 0;
@@ -177,7 +184,7 @@ export default async function BrandPage({ params }: { params: { brand: string } 
             <a
               href={visitHref}
               target="_blank"
-              rel="noopener noreferrer nofollow sponsored"
+              rel="noopener noreferrer nofollow"
               className="btn-primary"
             >
               Visit {dir.name} store <ArrowUpRight size={15} />
@@ -186,6 +193,12 @@ export default async function BrandPage({ params }: { params: { brand: string } 
               <Ruler size={15} /> {dir.name} size chart
             </Link>
           </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Store address: <span className="font-semibold text-slate-700">{storeAddress(dir.url)}</span>.
+            Some brands&apos; bot protection refuses visitors arriving from another site;
+            if the button dead-ends on an access-denied page, type that address
+            directly — the link is right, their door is just guarded.
+          </p>
           {!dir.indiaStore && (
             <p className="mt-2 text-xs text-slate-500">
               {dir.name} has no India-specific storefront we could verify — this goes
@@ -249,6 +262,8 @@ export default async function BrandPage({ params }: { params: { brand: string } 
       </div>
 
       {/* reviews */}
+      <BrandPicks brand={dir.name} heading={`What ${dir.name} calls its own best sellers`} />
+
       {reviews.length > 0 && (
         <section className="mt-12">
           <h2 className="text-xl font-black text-slate-900">Reviews of {dir.name}</h2>
@@ -259,6 +274,14 @@ export default async function BrandPage({ params }: { params: { brand: string } 
                   <span className="font-semibold text-slate-900">{r.authorName}</span>
                   <StarRating value={r.rating} />
                 </div>
+                {/* How much this person has contributed, so a reader can weigh the
+                    verdict. A first review counts; forty count differently. */}
+                {r.userId && (authorCounts.get(r.userId) ?? 0) > 0 && (
+                  <p className="mt-0.5 text-xs font-semibold text-indigo-600">
+                    {levelFor(authorCounts.get(r.userId)!).level.name} ·{" "}
+                    {authorCounts.get(r.userId)} contributions
+                  </p>
+                )}
                 <p className="mt-1 text-xs text-slate-400">
                   Sizing: {r.sizingAccuracy.replace(/-/g, " ")} ·{" "}
                   {r.createdAt.toLocaleDateString("en-IN", {

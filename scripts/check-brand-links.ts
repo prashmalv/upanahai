@@ -131,6 +131,13 @@ async function main() {
     for (const b of broken) console.log(`  - ${b.brand}: ${b.verdict} — ${b.detail} (${b.url})`);
     process.exitCode = 1;
   }
+
+  // Deliberately no per-brand "this store blocks us" flag. Whether a WAF refuses
+  // depends on the HTTP client: curl is refused by Nike, Asics, Adidas, Vans and
+  // New Balance where Node's fetch gets through, and Dr. Martens does the
+  // opposite. Two runs of this script disagree on several brands, so a flag
+  // derived from it would show shoppers a warning about a store that works.
+  // bot-blocked is reported above for information and never fails the run.
 }
 
 main();
