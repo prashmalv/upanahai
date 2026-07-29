@@ -28,7 +28,15 @@ class Client:
 
     def go(self, path, payload=None, method=None, follow=True):
         data = json.dumps(payload).encode() if payload is not None else None
-        headers = {"Content-Type": "application/json", "User-Agent": "UpanahSanity/1.0"}
+        # Ask not to be counted. Every run of this suite searches, scans and clicks
+        # its way across the site; without this each run lands in the analytics as a
+        # fresh visitor, and enough runs make the public demand board publish
+        # "trends" that are entirely our own test traffic.
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "UpanahSanity/1.0",
+            "x-upanah-sanity": "1"
+        }
         if self.cookies:
             headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in self.cookies.items())
         req = urllib.request.Request(BASE + path, data=data, headers=headers,
@@ -311,6 +319,15 @@ if ADMIN_PW:
         ok(f"dashboard window {w}d", st == 200, f"{st}")
 
 print("\n=== demand board & quiz ===")
+# This suite must not appear in the analytics it is testing.
+before = anon.page("/trends")[1]
+for _ in range(3):
+    anon.go("/api/search", {"q": "sanity probe shoes", "gender": "men"})
+after = anon.page("/trends")[1]
+ok("our own sweep is excluded from the demand data",
+   ("sanity probe" not in after) and
+   (("Not enough people yet" in before) == ("Not enough people yet" in after)),
+   "sweep traffic reached the board")
 st, body, _ = anon.page("/trends")
 ok("trends page loads", st == 200, f"status {st}")
 ok("trends refuses to imply sales data",
