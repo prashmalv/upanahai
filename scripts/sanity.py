@@ -463,6 +463,29 @@ ok("logout really ended the session", st in (302, 307) and "/login" in loc, f"{s
 st, body, _ = anon.go("/this-page-does-not-exist")
 ok("unknown page 404s", st == 404, f"{st}")
 
+print("\n=== erasure, and cleaning up after ourselves ===")
+# The privacy notice claims a right to erasure. Prove it works, prove it cannot be
+# triggered by accident, and use it to remove the accounts this run created — a
+# sweep that leaves debris behind in a live database is not a sweep anyone will
+# want to run against production.
+# The shopper was logged out by the session test above, and its password was
+# changed by the change-password test. Sign back in with the current one.
+st, _, _ = shopper.go("/api/auth/login", {"email": email, "password": "NewSanity456"})
+ok("shopper can sign back in to delete itself", st == 200, f"{st}")
+
+for label, client in [("shopper", shopper), ("brand", brand), ("escalation", esc)]:
+    if client is None:
+        continue
+    st, body, _ = client.go("/api/account/delete", {})
+    ok(f"{label}: deletion refuses without the confirmation", st == 400, f"{st} {body[:70]}")
+    st, body, _ = client.go("/api/account/delete", {"confirm": "DELETE"})
+    ok(f"{label}: account deleted", st == 200, f"{st} {body[:70]}")
+    st, _, loc = client.go("/account", follow=False)
+    ok(f"{label}: session is gone with it", st in (302, 307), f"{st} -> {loc}")
+
+st, body, _ = anon.go("/api/account/delete", {"confirm": "DELETE"})
+ok("anonymous cannot delete an account", st == 401, f"{st}")
+
 print("\n" + "=" * 66)
 print(f"{checks} checks, {len(problems)} problems")
 for label, detail in problems:

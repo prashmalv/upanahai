@@ -107,7 +107,7 @@ export default function DataAndPrivacyPage() {
           <ul className="space-y-2 text-sm text-slate-700">
             <li>· <strong>See it</strong> — your account page shows everything we hold about you.</li>
             <li>· <strong>Correct it</strong> — re-measure, edit your profile, or update a review at any time.</li>
-            <li>· <strong>Delete it</strong> — withdraw health consent to erase health data; email us to remove the account entirely.</li>
+            <li>· <strong>Delete it</strong> — withdraw health consent to erase health data, or delete the whole account from your <Link href="/account" className="font-semibold text-brand-600 hover:underline">account page</Link>. Deleting the account also removes the questions and answers you posted publicly; we say so before you confirm, not after.</li>
             <li>· <strong>Withdraw consent</strong> — one click on the <Link href="/health" className="font-semibold text-brand-600 hover:underline">health page</Link>, no explanation needed.</li>
             <li>· <strong>Ask a human</strong> — <a href="mailto:prashant.malviya@upanah.com" className="font-semibold text-brand-600 hover:underline">prashant.malviya@upanah.com</a>.</li>
           </ul>

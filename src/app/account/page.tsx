@@ -9,6 +9,7 @@ import { ProductCard } from "@/components/ProductCard";
 import { StarRating } from "@/components/StarRating";
 import { LogoutButton } from "@/components/LogoutButton";
 import { ChangePasswordForm } from "@/components/ChangePasswordForm";
+import { DeleteAccount } from "@/components/DeleteAccount";
 import { getContribution, LEVELS } from "@/lib/contribution";
 import {
   User2, Ruler, Heart, Activity, MessageSquare, Star, ShieldCheck,
@@ -390,6 +391,30 @@ export default async function AccountPage() {
             <Link href="/brands" className="btn-ghost mt-4 w-full justify-center">
               Rate a brand <ArrowRight size={15} />
             </Link>
+          </div>
+
+          {/* Erasure has to be a button, not an email address. The privacy notice
+              promises the right; this is where it is actually exercisable. */}
+          <div className="card p-5">
+            <p className="font-bold text-slate-900">Your data</p>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">
+              Withdraw health consent on the{" "}
+              <Link href="/health" className="font-semibold text-brand-600 hover:underline">
+                health page
+              </Link>{" "}
+              to delete your measurements and log while keeping the account. To remove
+              everything, including the account itself:
+            </p>
+            <div className="mt-3">
+              <DeleteAccount />
+            </div>
+            <p className="mt-3 text-xs text-slate-400">
+              What we hold and why is set out in the{" "}
+              <Link href="/data-and-privacy" className="font-semibold text-brand-600 hover:underline">
+                data &amp; privacy notice
+              </Link>
+              .
+            </p>
           </div>
         </div>
       </section>
