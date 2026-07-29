@@ -104,13 +104,27 @@ echo "local build ok"
 
 say "1/5  packaging source + the generated Prisma client"
 ZIP=$(mktemp -t upanah-deploy-XXXXX).zip
+# scripts/ ships because startup.sh runs things out of it — the brand best-seller
+# refresh, specifically. Leaving it out cost a boot: the guard fired, the script
+# was missing, and the only symptom was one line in the container log.
 zip -r -q "$ZIP" \
-  src prisma public package.json package-lock.json next.config.mjs \
+  src prisma scripts public package.json package-lock.json next.config.mjs \
   postcss.config.mjs tailwind.config.ts tsconfig.json startup.sh deploy.sh README.md \
-  -x "prisma/*.db" "prisma/*.db-journal" "public/uploads/*"
+  -x "prisma/*.db" "prisma/*.db-journal" "public/uploads/*" "scripts/__pycache__/*"
 zip -q "$ZIP" public/uploads/.gitkeep
 
 echo "$(du -h "$ZIP" | cut -f1) source package"
+
+# Every script startup.sh runs must actually be in the zip. This is the check that
+# would have caught scripts/ being left out: without it the omission surfaces only
+# as one resigned line in the container log, hours later, on a page that silently
+# has nothing to show.
+MISSING=""
+for f in $(grep -oE '(prisma|scripts)/[A-Za-z0-9_.-]+\.ts' startup.sh | sort -u); do
+  unzip -l "$ZIP" "$f" >/dev/null 2>&1 || MISSING="$MISSING $f"
+done
+[ -z "$MISSING" ] || die "startup.sh runs these but they are not in the package:$MISSING"
+echo "  every script startup.sh needs is packaged"
 
 # Ship the generated Prisma client's JS and types — but NOT the engine binaries.
 #
