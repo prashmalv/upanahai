@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CameraCapture } from "@/components/CameraCapture";
 import { FootMeasureCanvas } from "@/components/FootMeasureCanvas";
+import { ScanSetup } from "@/components/ScanSetup";
 import type { ReferenceKey } from "@/lib/homography";
 import {
   ScanLine, Ruler, Info, CheckCircle2, AlertTriangle, Pencil,
@@ -50,13 +52,29 @@ const GUIDANCE = [
 export default function FootScanPage() {
   const [reference, setReference] = useState<ReferenceKey>("a4");
   const [audience, setAudience] = useState<"men" | "women" | "kids">("men");
-  const [mode, setMode] = useState<"precise" | "photo" | "manual">("precise");
+  // Default to typing the number in — the page's own advice is that it beats every
+  // other route, and it was perverse to land people on the hardest one. ?mode= lets
+  // a specific route be linked to (and tested).
+  const params = useSearchParams();
+  const asked = params.get("mode");
+  const [mode, setMode] = useState<"precise" | "photo" | "manual">(
+    asked === "precise" || asked === "photo" ? asked : "manual"
+  );
   const [photo, setPhoto] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [manualMm, setManualMm] = useState("");
+  const [manualUnit, setManualUnit] = useState<"cm" | "mm">("cm");
+
+  // What the typed number means in millimetres, echoed back so a unit mix-up is
+  // caught before it becomes a shoe size.
+  const manualLengthMm = (() => {
+    const n = Number(manualMm);
+    if (!manualMm.trim() || !Number.isFinite(n) || n <= 0) return null;
+    return Math.round(manualUnit === "cm" ? n * 10 : n);
+  })();
 
   async function post(payload: Record<string, unknown>) {
     setLoading(true);
@@ -165,9 +183,9 @@ export default function FootScanPage() {
           <label className="mb-1.5 block text-sm font-medium text-slate-600">How do you want to measure?</label>
           <div className="mb-4 grid gap-2">
             {([
-              ["precise", Crosshair, "Precise", "Tap the sheet corners and your heel/toe. Most accurate — corrects for camera tilt."],
-              ["photo", Camera, "Quick AI estimate", "One photo, AI reads it. Fast, but an estimate."],
-              ["manual", Pencil, "I'll enter it myself", "You measured with a ruler. Most reliable of all."]
+              ["manual", Pencil, "Type the number (easiest, and the most accurate)", "Stand on paper, mark heel and toe, measure with a ruler. Two minutes and no photo needed."],
+              ["precise", Crosshair, "Measure on a photo", "Take a photo, then drag six markers onto the sheet's corners and your heel and toe. The millimetres update as you drag."],
+              ["photo", Camera, "Let the AI estimate it", "One photo, no marking. Quickest, and the least certain — we will tell you how uncertain."]
             ] as const).map(([k, Icon, title, desc]) => (
               <button
                 key={k}
@@ -191,30 +209,68 @@ export default function FootScanPage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                const mm = Number(manualMm);
-                if (!Number.isFinite(mm)) return;
-                post({ measuredLengthMm: mm, source: "manual" });
+                if (manualLengthMm === null) return;
+                post({ measuredLengthMm: manualLengthMm, source: "manual" });
               }}
               className="space-y-3"
             >
+              {/* Ordinary tape measures are marked in centimetres, so a field that
+                  only accepts millimetres invites someone to type 26.5 and be told
+                  it is out of range. Accept either and say which we read it as. */}
               <label className="block text-sm font-medium text-slate-600">
-                Foot length in millimetres (heel to longest toe)
+                Foot length, heel to longest toe
               </label>
-              <input
-                className="input"
-                type="number"
-                min={90}
-                max={360}
-                placeholder="e.g. 267"
-                value={manualMm}
-                onChange={(e) => setManualMm(e.target.value)}
-                required
-              />
-              <p className="text-xs text-slate-500">
-                Stand on a sheet of paper, mark behind your heel and past your longest
-                toe, then measure between the marks with a ruler.
-              </p>
-              <button className="btn-primary w-full" disabled={loading}>
+              <div className="flex gap-2">
+                <input
+                  className="input"
+                  type="number"
+                  step="0.1"
+                  min={9}
+                  max={360}
+                  placeholder="26.7"
+                  value={manualMm}
+                  onChange={(e) => setManualMm(e.target.value)}
+                  required
+                />
+                <div className="inline-flex shrink-0 rounded-xl bg-slate-100 p-1">
+                  {(["cm", "mm"] as const).map((u) => (
+                    <button
+                      key={u}
+                      type="button"
+                      onClick={() => setManualUnit(u)}
+                      className={`rounded-lg px-3 text-sm font-semibold transition ${
+                        manualUnit === u ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                      }`}
+                    >
+                      {u}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {manualLengthMm !== null && (
+                <p className="text-xs font-semibold text-slate-700">
+                  Reading that as {manualLengthMm} mm
+                  {manualLengthMm < 90 || manualLengthMm > 360
+                    ? " — which is outside the range we can size. Check the unit."
+                    : "."}
+                </p>
+              )}
+              <div className="rounded-xl bg-slate-50 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  How to get the number
+                </p>
+                <ol className="mt-2 space-y-1 text-xs text-slate-600">
+                  <li>1. Put a sheet of paper on hard floor, one edge against a wall.</li>
+                  <li>2. Stand on it, heel touching the wall, weight on the foot.</li>
+                  <li>3. Mark the paper just past your longest toe — that is not always the big toe.</li>
+                  <li>4. Measure from the wall edge to the mark.</li>
+                  <li>5. Do both feet and use the larger number.</li>
+                </ol>
+              </div>
+              <button
+                className="btn-primary w-full"
+                disabled={loading || manualLengthMm === null || manualLengthMm < 90 || manualLengthMm > 360}
+              >
                 {loading ? "Converting…" : "Get my size"}
               </button>
             </form>
@@ -233,9 +289,12 @@ export default function FootScanPage() {
                 <Info size={16} className="mt-0.5 shrink-0" />
                 <span>
                   {mode === "precise"
-                    ? "Take the photo, then tap the sheet's four corners and your heel and toe."
+                    ? "Take the photo first. Then you'll drag six markers onto the sheet's corners and your heel and toe — nothing to get right in advance, and the measurement updates as you move them."
                     : "Keep the camera directly above your foot, with the whole sheet in frame."}
                 </span>
+              </div>
+              <div className="mb-3">
+                <ScanSetup />
               </div>
               {/* requireLevel only here: tilt dominates the error for foot
                   measurement, but is irrelevant for shoe photo matching. */}

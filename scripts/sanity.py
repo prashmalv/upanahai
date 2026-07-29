@@ -318,6 +318,20 @@ if ADMIN_PW:
         st, _, _ = admin.go(f"/admin?days={w}")
         ok(f"dashboard window {w}d", st == 200, f"{st}")
 
+print("\n=== foot scan: is it followable ===")
+st, body, _ = anon.page("/foot-scan")
+ok("scan page loads", st == 200, f"{st}")
+ok("lands on typing the number, not the six-marker flow",
+   "How to get the number" in body and "Set it up like this" not in body)
+ok("says plainly which route is most accurate", "easiest, and the most accurate" in body)
+ok("accepts centimetres, which is what tape measures show", 'placeholder="26.7"' in body)
+st, body, _ = anon.page("/foot-scan?mode=precise")
+ok("photo route explains dragging rather than blind tapping", "drag six markers" in body)
+ok("photo route promises a live reading", "updates as you move them" in body)
+ok("photo route shows a setup diagram", "Set it up like this" in body)
+ok("bad ?mode= falls back to the safe default",
+   "How to get the number" in anon.page("/foot-scan?mode=nonsense")[1])
+
 print("\n=== demand board & quiz ===")
 # This suite must not appear in the analytics it is testing.
 before = anon.page("/trends")[1]

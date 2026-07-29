@@ -41,6 +41,19 @@ export const metadata: Metadata = {
   creator: SITE.name,
   publisher: SITE.name,
   category: "shopping",
+  // Search Console / Bing ownership tokens, supplied by environment rather than
+  // committed. They are per-property strings that belong to whoever owns the
+  // domain, and hardcoding one in a public repo means the next person to fork this
+  // is claiming ownership of somebody else's property. Set the app setting, restart,
+  // and the tag appears — no code change and no redeploy.
+  verification: {
+    ...(process.env.GOOGLE_SITE_VERIFICATION
+      ? { google: process.env.GOOGLE_SITE_VERIFICATION }
+      : {}),
+    ...(process.env.BING_SITE_VERIFICATION
+      ? { other: { "msvalidate.01": process.env.BING_SITE_VERIFICATION } }
+      : {})
+  },
   alternates: {
     canonical: "/"
   },
