@@ -318,6 +318,35 @@ if ADMIN_PW:
         st, _, _ = admin.go(f"/admin?days={w}")
         ok(f"dashboard window {w}d", st == 200, f"{st}")
 
+print("\n=== what we are telling Google ===")
+import re as _re3
+st, body, _ = anon.page("/sitemap.xml")
+ok("sitemap serves", st == 200, f"{st}")
+sitemap_urls = _re3.findall(r"<loc>(.*?)</loc>", body)
+ok("sitemap has content", len(sitemap_urls) > 40, f"{len(sitemap_urls)} urls")
+ok("sitemap never lists a robots-disallowed path",
+   not any(_re3.search(r"/(login|admin|account|wishlist|api)(/|$|\?)", u) for u in sitemap_urls),
+   str([u for u in sitemap_urls if _re3.search(r"/(login|admin|account|wishlist|api)(/|$|\?)", u)][:3]))
+
+st, robots, _ = anon.page("/robots.txt")
+ok("robots advertises the sitemap", "Sitemap:" in robots and "sitemap.xml" in robots)
+for bot in ["GPTBot", "ClaudeBot", "PerplexityBot", "Bingbot"]:
+    ok(f"robots names {bot}", bot in robots)
+
+# Facet pages either earn their own identity or should not be submitted.
+def head(path):
+    _, h, _ = anon.page(path)
+    t = _re3.search(r"<title>(.*?)</title>", h, _re3.S)
+    c = _re3.search(r'<link rel="canonical" href="([^"]+)"', h)
+    return (t.group(1).strip() if t else ""), (c.group(1) if c else "")
+
+generic_title, _ = head("/search")
+facet_title, facet_canon = head("/search?category=running")
+ok("a submitted facet has its own title", facet_title and facet_title != generic_title, facet_title)
+ok("a submitted facet canonicalises to itself", facet_canon.endswith("category=running"), facet_canon)
+_, q_canon = head("/search?q=some+one+off+phrase")
+ok("free-text searches do not invite an infinite index", q_canon.rstrip("/").endswith("/search"), q_canon)
+
 print("\n=== foot scan: is it followable ===")
 st, body, _ = anon.page("/foot-scan")
 ok("scan page loads", st == 200, f"{st}")

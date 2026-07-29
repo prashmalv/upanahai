@@ -26,8 +26,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/trends`, changeFrequency: "daily", priority: 0.8 },
     { url: `${base}/size-chart`, changeFrequency: "monthly", priority: 0.8 },
     { url: `${base}/community`, changeFrequency: "daily", priority: 0.8 },
-    { url: `${base}/data-and-privacy`, changeFrequency: "monthly", priority: 0.5 },
-    { url: `${base}/login`, changeFrequency: "yearly", priority: 0.3 }
+    { url: `${base}/data-and-privacy`, changeFrequency: "monthly", priority: 0.5 }
+    // /login is deliberately absent: robots.txt disallows it and the page is
+    // noindex, so submitting it only earns a "blocked by robots.txt" in Search
+    // Console. A sitemap is a list of pages we want indexed, not of pages that
+    // exist.
   ];
 
   const facets: MetadataRoute.Sitemap = [

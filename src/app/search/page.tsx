@@ -12,21 +12,83 @@ import { Sparkles, SlidersHorizontal } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "AI Footwear Search — Compare Branded Shoe Prices in India",
-  description:
-    "Describe what you need in plain language or by voice and get ranked footwear recommendations, with price, rating and delivery compared across Amazon, Flipkart, Myntra, Ajio and official brand stores.",
-  keywords: [
-    "compare shoe prices India",
-    "best shoes under 5000",
-    "running shoes price comparison",
-    "branded footwear online India",
-    "AI shoe search"
-  ],
-  alternates: { canonical: "/search" }
+type SP = { q?: string; category?: string; gender?: string; persona?: string };
+
+const CATEGORY_TITLE: Record<string, string> = {
+  running: "Running shoes",
+  walking: "Walking shoes",
+  sports: "Sports shoes",
+  casual: "Casual shoes",
+  formal: "Formal shoes",
+  orthopedic: "Orthopedic & comfort footwear",
+  sandals: "Sandals & slippers"
 };
 
-type SP = { q?: string; category?: string; gender?: string; persona?: string };
+const AUDIENCE_TITLE: Record<string, string> = {
+  men: "for men",
+  women: "for women",
+  kids: "for kids"
+};
+
+/**
+ * Per-facet metadata.
+ *
+ * The static version gave all eleven /search URLs in the sitemap the same title
+ * and pointed every canonical at /search — so the ten facet entries were
+ * submitted to Google and then told to disregard themselves. Either they are
+ * landing pages or they should not be in the sitemap; "running shoes for men in
+ * India" is a real thing people search for and we have real results for it, so
+ * they are landing pages, with their own title and their own canonical.
+ *
+ * A free-text query is different: ?q= is unbounded, so those stay canonicalised
+ * to /search rather than inviting an infinite index of one-off phrasings.
+ */
+export function generateMetadata({ searchParams }: { searchParams: SP }): Metadata {
+  const category = searchParams.category && CATEGORY_TITLE[searchParams.category]
+    ? searchParams.category
+    : "";
+  const gender = searchParams.gender && AUDIENCE_TITLE[searchParams.gender]
+    ? searchParams.gender
+    : "";
+  const freeText = !!searchParams.q;
+
+  if (freeText || (!category && !gender)) {
+    return {
+      title: "AI Footwear Search — Compare Branded Shoe Prices in India",
+      description:
+        "Describe what you need in plain language or by voice and get ranked footwear recommendations, with price, rating and delivery compared across Amazon, Flipkart, Myntra, Ajio and official brand stores.",
+      keywords: [
+        "compare shoe prices India",
+        "best shoes under 5000",
+        "running shoes price comparison",
+        "branded footwear online India",
+        "AI shoe search"
+      ],
+      alternates: { canonical: "/search" }
+    };
+  }
+
+  const what = category ? CATEGORY_TITLE[category] : "Footwear";
+  const who = gender ? ` ${AUDIENCE_TITLE[gender]}` : "";
+  const params = new URLSearchParams();
+  if (category) params.set("category", category);
+  if (gender) params.set("gender", gender);
+
+  return {
+    title: `${what}${who} in India — prices compared across retailers`,
+    description:
+      `${what}${who} available in India, ranked by fit and value rather than by who pays us — ` +
+      "nobody does. Price, rating and delivery compared across Amazon, Flipkart, Myntra, Ajio " +
+      "and the brands' own stores, with what real buyers said about the sizing.",
+    keywords: [
+      `${what.toLowerCase()}${who} India`,
+      `best ${what.toLowerCase()}${who}`,
+      `${what.toLowerCase()} price comparison India`,
+      "branded footwear online India"
+    ],
+    alternates: { canonical: `/search?${params.toString()}` }
+  };
+}
 
 /**
  * Which brand (if any) the shopper named. Recorded so the admin can answer
