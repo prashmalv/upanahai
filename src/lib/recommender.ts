@@ -101,16 +101,21 @@ export function scoreProducts(
       reasons.push(`good for ${intent.persona}`);
     }
 
-    // needs -> support attributes
+    // Needs, matched against support attributes where we have them and against the
+    // brand's own words where we don't.
+    //
+    // The attribute columns are 0 for every listing imported from a brand feed —
+    // a feed does not say how much arch support a shoe has, and the old default of
+    // 3 was a number pretending to be knowledge. So 0 means unknown: it earns
+    // nothing and costs nothing, and the need is matched on the listing's text
+    // instead, which is the brand describing its own product.
     for (const need of intent.needs || []) {
       const field = NEED_FIELD[need];
-      if (field) {
-        const v = (p as any)[field] as number;
-        if (v >= 4) {
-          score += 12;
-          reasons.push(need.replace("-", " "));
-        }
-      } else if (tags.includes(need)) {
+      const v = field ? ((p as any)[field] as number) : 0;
+      if (field && v >= 4) {
+        score += 12;
+        reasons.push(need.replace("-", " "));
+      } else if (tags.includes(need) || tags.includes(need.replace("-", " "))) {
         score += 8;
         reasons.push(need.replace("-", " "));
       }
@@ -122,9 +127,15 @@ export function scoreProducts(
       if (haystack.includes(kw)) score += 3;
     }
 
-    // rating & popularity nudge
-    score += (p.rating - 4) * 8;
-    score += Math.min(p.reviewCount / 500, 6);
+    // A rating nudge only where a rating exists.
+    //
+    // This was `(p.rating - 4) * 8` unconditionally, which with the seeded ratings
+    // gone means every product carries a flat -32 — harmless for the ordering, but
+    // it would quietly swamp the real signal the moment one product got a review.
+    if (p.reviewCount > 0) {
+      score += (p.rating - 4) * 8;
+      score += Math.min(p.reviewCount / 20, 6);
+    }
 
     // price constraint
     const lowestPrice = p.offers?.length
@@ -171,7 +182,7 @@ export function scoreByImageMatch(
     for (const k of kw) {
       if (hay.includes(k)) score += 6;
     }
-    score += (p.rating - 4) * 5;
+    if (p.reviewCount > 0) score += (p.rating - 4) * 5;
 
     const lowestPrice = p.offers?.length
       ? Math.min(...p.offers.map((o: any) => o.price))

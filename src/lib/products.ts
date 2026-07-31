@@ -27,27 +27,52 @@ export function toCard(p: any, reasons?: string[]): ProductCardData {
     category: p.category,
     rating: p.rating,
     reviewCount: p.reviewCount,
+    sourcedFrom: p.sourcedFrom ?? "",
     lowestPrice,
     basePrice: p.basePrice,
     reasons
   };
 }
 
+/**
+ * The home page rail.
+ *
+ * It used to order by rating, which was ordering by the demo seed's invented
+ * ratings — "Top rated right now" was a ranking of numbers nobody had earned. Real
+ * ratings now exist only where a shopper has left one, so the rail leads with
+ * genuinely reviewed products and fills the rest with the newest listings we read
+ * from the brands. The caller decides what to call it; this function no longer
+ * pretends the order means "best".
+ */
 export async function getFeatured(limit = 8) {
-  const products = await prisma.product.findMany({
-    where: DISPLAYABLE,
+  const reviewed = await prisma.product.findMany({
+    where: { ...DISPLAYABLE, reviewCount: { gt: 0 } },
     include: { offers: true },
     orderBy: [{ rating: "desc" }, { reviewCount: "desc" }],
     take: limit
   });
-  return products.map((p) => toCard(p));
+  if (reviewed.length >= limit) return reviewed.map((p) => toCard(p));
+
+  const fill = await prisma.product.findMany({
+    where: {
+      ...DISPLAYABLE,
+      reviewCount: 0,
+      id: { notIn: reviewed.map((r) => r.id) }
+    },
+    include: { offers: true },
+    orderBy: [{ sourcedAt: "desc" }, { createdAt: "desc" }],
+    take: limit - reviewed.length
+  });
+  return [...reviewed, ...fill].map((p) => toCard(p));
 }
 
 export async function getByPersona(persona: string, limit = 4) {
   const products = await prisma.product.findMany({
     where: { ...DISPLAYABLE, suitsPersonas: { contains: persona } },
     include: { offers: true },
-    orderBy: { rating: "desc" },
+    // Not by rating: see getFeatured. Newest read first, so the rail changes as
+    // the brands' own catalogues do.
+    orderBy: [{ sourcedAt: "desc" }, { createdAt: "desc" }],
     take: limit
   });
   return products.map((p) => toCard(p));

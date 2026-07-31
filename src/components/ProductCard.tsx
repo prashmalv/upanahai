@@ -15,6 +15,8 @@ export type ProductCardData = {
   category: string;
   rating: number;
   reviewCount: number;
+  /** Which brand store the listing and price were read from, if any. */
+  sourcedFrom?: string;
   lowestPrice: number;
   basePrice: number;
   reasons?: string[];
@@ -57,9 +59,20 @@ export function ProductCard({ p, inWishlist = false }: { p: ProductCardData; inW
         <Link href={`/product/${p.slug}`}>
           <h3 className="mt-1 line-clamp-1 font-semibold text-slate-900 hover:text-brand-700">{p.name}</h3>
         </Link>
+        {/* Stars appear only when somebody has reviewed this. A zero-star row on
+            every card is noise, and a fabricated four-star row is worse — which is
+            what this was until the seeded ratings came out. */}
         <div className="mt-1">
-          <StarRating value={p.rating} />
-          <span className="ml-1 text-xs text-slate-400">({p.reviewCount})</span>
+          {p.reviewCount > 0 ? (
+            <>
+              <StarRating value={p.rating} />
+              <span className="ml-1 text-xs text-slate-400">
+                ({p.reviewCount} {p.reviewCount === 1 ? "review" : "reviews"})
+              </span>
+            </>
+          ) : (
+            <span className="text-xs text-slate-400">No reviews yet</span>
+          )}
         </div>
         {p.reasons && p.reasons.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">

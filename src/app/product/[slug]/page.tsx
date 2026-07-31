@@ -26,10 +26,15 @@ export async function generateMetadata({
 
   const lowest = p.offers[0]?.price ?? p.basePrice;
   const title = `${p.brand} ${p.name} — Price, Fit & Reviews`;
+  // The description used to quote p.rating and p.reviewCount, which came from the
+  // demo seed. It also promised "arch support and cushioning scores" we do not have
+  // for a listing read off a brand's feed. Say what is on the page.
   const description =
-    `${p.brand} ${p.name}: best price ₹${lowest.toLocaleString("en-IN")} compared across Indian retailers, ` +
-    `rated ${p.rating}/5 from ${p.reviewCount.toLocaleString("en-IN")} reviews. ` +
-    `See real fit feedback, arch support and cushioning scores, then buy from the retailer you trust.`;
+    `${p.brand} ${p.name} — listed at ₹${lowest.toLocaleString("en-IN")} on ${p.brand}'s own store. ` +
+    (p.reviewCount > 0
+      ? `Rated ${p.rating}/5 by ${p.reviewCount} ${p.reviewCount === 1 ? "shopper" : "shoppers"} here. `
+      : "No shopper reviews here yet — be the first. ") +
+    `Check your size against ${p.brand}'s chart, read how their sizing runs, then buy from them directly.`;
 
   return {
     title,
@@ -106,10 +111,27 @@ export default async function ProductPage({ params }: { params: { slug: string }
           <p className="text-sm font-semibold uppercase tracking-wide text-brand-600">{p.brand}</p>
           <h1 className="mt-1 text-2xl font-extrabold text-slate-900 md:text-3xl">{p.name}</h1>
           <div className="mt-2 flex items-center gap-3">
-            <StarRating value={p.rating} size={16} />
-            <span className="text-sm text-slate-500">{p.reviewCount.toLocaleString("en-IN")} reviews</span>
+            {p.reviewCount > 0 ? (
+              <>
+                <StarRating value={p.rating} size={16} />
+                <span className="text-sm text-slate-500">
+                  {p.reviewCount} {p.reviewCount === 1 ? "review" : "reviews"} here
+                </span>
+              </>
+            ) : (
+              <span className="text-sm text-slate-500">No reviews here yet</span>
+            )}
             <span className="chip">{p.category}</span>
           </div>
+          {p.sourcedFrom && (
+            <p className="mt-1 text-xs text-slate-400">
+              Listing and price read from {p.sourcedFrom}
+              {p.sourcedAt
+                ? ` on ${p.sourcedAt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`
+                : ""}
+              .
+            </p>
+          )}
           <p className="mt-4 text-slate-600">{p.description}</p>
 
           <div className="mt-4 flex flex-wrap gap-3">
@@ -203,8 +225,17 @@ export default async function ProductPage({ params }: { params: { slug: string }
                 <div>
                   <p className="font-semibold text-slate-900">{o.retailer}</p>
                   <p className="flex items-center gap-2 text-xs text-slate-500">
-                    <StarRating value={o.retailerRating} size={11} />
-                    <span className="inline-flex items-center gap-1"><Truck size={12} /> {o.deliveryDays}d delivery</span>
+                    {/* Only what we actually know. The seeded catalog carried a
+                        retailer rating and a delivery estimate for every offer;
+                        both were invented, and "0d delivery" is not an improvement
+                        on a made-up one. */}
+                    {o.retailerRating > 0 && <StarRating value={o.retailerRating} size={11} />}
+                    {o.deliveryDays > 0 && (
+                      <span className="inline-flex items-center gap-1"><Truck size={12} /> {o.deliveryDays}d delivery</span>
+                    )}
+                    <span className="text-slate-400">
+                      price read {o.capturedAt.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                    </span>
                     {o.inStock ? (
                       <span className="inline-flex items-center gap-1 text-emerald-600"><BadgeCheck size={12} /> In stock</span>
                     ) : (
@@ -231,7 +262,10 @@ export default async function ProductPage({ params }: { params: { slug: string }
           ))}
         </div>
         <p className="mt-2 text-xs text-slate-400">
-          Upanah.AI links you to the retailer&apos;s site. Prices &amp; availability are indicative and may change.
+          These prices come from the brand&apos;s own store, read on the date shown
+          beside each one — they are not live, and will have moved since. The link
+          goes to that product on their site, which is the only place a current
+          price exists. We take nothing for sending you there.
         </p>
       </section>
 

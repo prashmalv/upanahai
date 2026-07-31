@@ -77,23 +77,29 @@ echo "[startup] syncing database schema..."
 npx --no-install prisma db push --skip-generate --accept-data-loss \
   || npx prisma db push --skip-generate --accept-data-loss
 
-# prisma/seed.ts is destructive (it deleteMany()s products, offers, wishlist and
-# feedback), so only ever run it against an empty catalog — never on every boot.
-echo "[startup] checking catalog..."
-COUNT=$(node -e "
-const { PrismaClient } = require('@prisma/client');
+# The catalog comes from the brands' own storefronts, not from a seed.
+#
+# prisma/seed.ts is still in the repo but is deliberately NOT run here. Its data
+# was invented — prices attributed to Amazon and Myntra that nobody had checked,
+# review counts nobody had written — and an empty catalog is a better thing to ship
+# than a false one. The import below is the only way listings get in.
+#
+# It runs only when there is nothing real yet, so a restart never re-fetches
+# fourteen storefronts for no reason and never wipes a catalog that is already
+# good. --drop-seed removes any invented rows still lying around from before.
+REAL=$(npx --no-install tsx -e "
+import { PrismaClient } from '@prisma/client';
 const p = new PrismaClient();
-p.product.count()
-  .then((c) => { console.log(c); })
-  .catch(() => { console.log(0); })
-  .finally(() => p.\$disconnect());
+p.product.count({ where: { NOT: { sourcedFrom: '' } } })
+  .then((n) => { console.log(n); return p.\$disconnect(); })
+  .catch(() => { console.log(0); return p.\$disconnect(); });
 " 2>/dev/null | tail -1)
-
-if [ "${COUNT:-0}" = "0" ]; then
-  echo "[startup] catalog empty — seeding"
-  npx --no-install tsx prisma/seed.ts || npx tsx prisma/seed.ts
+if [ "${REAL:-0}" -lt 50 ]; then
+  echo "[startup] catalog has ${REAL:-0} real listings — importing from brand stores"
+  npx --no-install tsx scripts/import-brand-catalog.ts --per-brand 30 --drop-seed || \
+    echo "[startup] catalog import failed — leaving the catalog as it is"
 else
-  echo "[startup] catalog already has ${COUNT} products — skipping seed"
+  echo "[startup] catalog already has ${REAL} real listings — skipping import"
 fi
 
 # Admin provisioning is idempotent and never resets an existing password, so it

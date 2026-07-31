@@ -82,11 +82,17 @@ model Product {
   reviewCount    Int       @default(0)
   // comma-separated tags used by the recommender & photo-matcher
   tags           String    @default("")
-  // support features: arch, cushioning, grip, breathability, weight (1-5)
-  archSupport    Int       @default(3)
-  cushioning     Int       @default(3)
-  grip           Int       @default(3)
-  breathability  Int       @default(3)
+  // Support features on a 1-5 scale — with 0 meaning WE DO NOT KNOW.
+  //
+  // The default used to be 3, which reads as "average" and is a claim. For a
+  // product imported from a brand's own feed we have no basis for any of these
+  // numbers, so they are 0 and the recommender neither credits nor penalises
+  // them. Inventing a cushioning score would be the same mistake as the invented
+  // review counts: a number that looks like knowledge.
+  archSupport    Int       @default(0)
+  cushioning     Int       @default(0)
+  grip           Int       @default(0)
+  breathability  Int       @default(0)
   // suits which personas (comma separated): general,senior,sports,kids
   suitsPersonas  String    @default("general")
   // Two INDEPENDENT image gates. They answer different questions and are owned
@@ -105,6 +111,12 @@ model Product {
   imageBrandSafe Boolean   @default(true)
   imageBrandNote String    @default("")
   imageCheckedAt DateTime?
+  // Where this listing came from. "" for the original demo seed, otherwise the
+  // brand store we read it off. Provenance has to be a column rather than a
+  // convention: it is what lets us tell a shopper (and a brand) that a price is
+  // the brand's own, and what lets us delete the invented rows without guessing.
+  sourcedFrom    String    @default("")
+  sourcedAt      DateTime?
   createdAt      DateTime  @default(now())
 
   offers   Offer[]
@@ -119,15 +131,18 @@ model Product {
 
 // A buy-link from a retailer (Trivago-style comparison + redirect)
 model Offer {
-  id             String  @id @default(cuid())
+  // When the price was read. Shown to the shopper, because a price with no date
+  // implies it is live, and ours is not — it is as-at the moment we fetched it.
+  capturedAt     DateTime @default(now())
+  id             String   @id @default(cuid())
   productId      String
-  product        Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   retailer       String // Amazon.in, Flipkart, Myntra, Ajio, brand.com ...
   price          Int // current price INR
   url            String // redirect / affiliate url
-  inStock        Boolean @default(true)
-  deliveryDays   Int     @default(3)
-  retailerRating Float   @default(4.2)
+  inStock        Boolean  @default(true)
+  deliveryDays   Int      @default(3)
+  retailerRating Float    @default(4.2)
 
   @@index([productId])
 }

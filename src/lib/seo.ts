@@ -203,6 +203,12 @@ type ProductLd = {
    * that 1,820 people had rated a shoe two people had actually reviewed.
    */
   feedback: { rating: number; comment: string; authorName: string; createdAt: Date }[];
+  /**
+   * Real offers only: a price we read off a named store, with the URL of the
+   * actual product page it came from and the moment we read it. An offer without
+   * a real URL does not belong here — that is what the seeded data was.
+   */
+  offers: { retailer: string; price: number; url: string; inStock?: boolean; capturedAt: Date }[];
 };
 
 /**
@@ -216,12 +222,13 @@ type ProductLd = {
  * and inventing a returns window on a retailer's behalf would be a false statement
  * about someone else's terms, in machine-readable form, to a search engine.
  *
- * Prices are absent for the same reason. The offer rows in this app came from a
+ * Prices were absent for a while for the same reason: the offer rows came from a
  * demo seed — "Amazon.in ₹3,499", with amazon.in's homepage as the link — and
- * emitting those as Offers meant asserting prices we had never checked against
- * named retailers. Until there is a real feed, the honest structured data has no
- * prices in it. A missing field is a warning; a wrong one is a lie Google may
- * render as a rich result.
+ * emitting those meant asserting prices we had never checked against named
+ * retailers. They are back now that they are real, read from each brand's own
+ * store, and each one carries `validFrom` — the moment we actually read it, which
+ * is the honest answer to Google asking for that field. An offer with no real
+ * product URL behind it is still never published.
  *
  * AggregateRating and reviews come only from feedback written here. If nobody has
  * reviewed the product, both are omitted, and Search Console's "missing field
@@ -256,6 +263,28 @@ export function productJsonLd(p: ProductLd) {
             worstRating: 1
           }
         : undefined,
+    offers: p.offers.length
+      ? {
+          "@type": "AggregateOffer",
+          priceCurrency: "INR",
+          lowPrice: Math.min(...p.offers.map((o) => o.price)),
+          highPrice: Math.max(...p.offers.map((o) => o.price)),
+          offerCount: p.offers.length,
+          offers: p.offers.map((o) => ({
+            "@type": "Offer",
+            priceCurrency: "INR",
+            price: o.price,
+            url: o.url,
+            // When we read this price. Not a promise that it still holds.
+            validFrom: o.capturedAt.toISOString().slice(0, 10),
+            seller: { "@type": "Organization", name: o.retailer },
+            availability:
+              o.inStock === false
+                ? "https://schema.org/OutOfStock"
+                : "https://schema.org/InStock"
+          }))
+        }
+      : undefined,
     review:
       count > 0
         ? reviews.slice(0, 10).map((f) => ({

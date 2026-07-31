@@ -332,7 +332,18 @@ if prods:
     prod_ld = next((d for d in ld if isinstance(d, dict) and d.get("@type") == "Product"), None)
     ok("product page emits Product structured data", prod_ld is not None)
     if prod_ld:
-        ok("no offer prices are asserted", "offers" not in prod_ld, str(prod_ld.get("offers"))[:80])
+        # Offers are published again now that they are real. The invariant is no
+        # longer "no prices" but "every price is traceable": a named seller, the
+        # actual product URL it was read from, and the date it was read.
+        offers = (prod_ld.get("offers") or {}).get("offers") or []
+        ok("offers are published", len(offers) > 0, str(prod_ld.get("offers"))[:100])
+        ok("every offer names its seller",
+           all(o.get("seller", {}).get("name") for o in offers), str(offers)[:120])
+        ok("every offer links to the product page it was read from",
+           all(str(o.get("url", "")).startswith("http") for o in offers),
+           str([o.get("url") for o in offers])[:140])
+        ok("every offer says when the price was read",
+           all(o.get("validFrom") for o in offers), str(offers)[:120])
         ok("a brand identifier is present", bool(prod_ld.get("brand", {}).get("name")))
         ar = prod_ld.get("aggregateRating")
         rv = prod_ld.get("review") or []
@@ -341,6 +352,8 @@ if prods:
            f"count={ar and ar.get('reviewCount')} reviews={len(rv)}")
         ok("no seeded review counts leak into schema",
            ar is None or ar.get("reviewCount", 0) < 100, str(ar))
+        ok("the page says where the listing came from",
+           "read from" in phtml, "no provenance line")
 st, body, _ = anon.page("/sitemap.xml")
 ok("sitemap serves", st == 200, f"{st}")
 sitemap_urls = _re3.findall(r"<loc>(.*?)</loc>", body)
