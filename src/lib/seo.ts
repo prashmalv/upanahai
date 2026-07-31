@@ -196,14 +196,45 @@ type ProductLd = {
   imageUrl: string;
   colorway?: string | null;
   category: string;
-  rating: number;
-  reviewCount: number;
-  basePrice: number;
-  offers: { retailer: string; price: number; inStock?: boolean }[];
+  /**
+   * Reviews written by people on this site, and nothing else. Deliberately NOT
+   * the product's `rating` / `reviewCount` columns — those came from the demo
+   * seed and are invented, and publishing them as an AggregateRating told Google
+   * that 1,820 people had rated a shoe two people had actually reviewed.
+   */
+  feedback: { rating: number; comment: string; authorName: string; createdAt: Date }[];
 };
 
+/**
+ * Product structured data.
+ *
+ * WHAT IS DELIBERATELY ABSENT, AND WHY
+ *
+ * Search Console asked for `offers.hasMerchantReturnPolicy`, `offers.shippingDetails`
+ * and `offers.validFrom`. We do not publish them, and the reason is not laziness:
+ * we are not the merchant. We do not set a return policy, we do not ship anything,
+ * and inventing a returns window on a retailer's behalf would be a false statement
+ * about someone else's terms, in machine-readable form, to a search engine.
+ *
+ * Prices are absent for the same reason. The offer rows in this app came from a
+ * demo seed — "Amazon.in ₹3,499", with amazon.in's homepage as the link — and
+ * emitting those as Offers meant asserting prices we had never checked against
+ * named retailers. Until there is a real feed, the honest structured data has no
+ * prices in it. A missing field is a warning; a wrong one is a lie Google may
+ * render as a rich result.
+ *
+ * AggregateRating and reviews come only from feedback written here. If nobody has
+ * reviewed the product, both are omitted, and Search Console's "missing field
+ * 'review'" warning is the correct outcome rather than a problem to make go away.
+ */
 export function productJsonLd(p: ProductLd) {
-  const prices = p.offers.length ? p.offers.map((o) => o.price) : [p.basePrice];
+  const reviews = p.feedback.filter((f) => f.rating > 0);
+  const count = reviews.length;
+  const mean =
+    count > 0
+      ? Math.round((reviews.reduce((a, f) => a + f.rating, 0) / count) * 10) / 10
+      : 0;
+
   return {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -216,32 +247,29 @@ export function productJsonLd(p: ProductLd) {
     category: p.category,
     url: abs(`/product/${p.slug}`),
     aggregateRating:
-      p.reviewCount > 0
+      count > 0
         ? {
             "@type": "AggregateRating",
-            ratingValue: p.rating,
-            reviewCount: p.reviewCount,
+            ratingValue: mean,
+            reviewCount: count,
             bestRating: 5,
-            worstRating: 1,
+            worstRating: 1
           }
         : undefined,
-    offers: {
-      "@type": "AggregateOffer",
-      priceCurrency: "INR",
-      lowPrice: Math.min(...prices),
-      highPrice: Math.max(...prices),
-      offerCount: p.offers.length || 1,
-      availability: "https://schema.org/InStock",
-      offers: p.offers.map((o) => ({
-        "@type": "Offer",
-        priceCurrency: "INR",
-        price: o.price,
-        seller: { "@type": "Organization", name: o.retailer },
-        availability:
-          o.inStock === false
-            ? "https://schema.org/OutOfStock"
-            : "https://schema.org/InStock",
-      })),
-    },
+    review:
+      count > 0
+        ? reviews.slice(0, 10).map((f) => ({
+            "@type": "Review",
+            reviewRating: {
+              "@type": "Rating",
+              ratingValue: f.rating,
+              bestRating: 5,
+              worstRating: 1
+            },
+            author: { "@type": "Person", name: f.authorName || "Verified shopper" },
+            datePublished: f.createdAt.toISOString().slice(0, 10),
+            reviewBody: f.comment || undefined
+          }))
+        : undefined
   };
 }

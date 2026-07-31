@@ -320,6 +320,27 @@ if ADMIN_PW:
 
 print("\n=== what we are telling Google ===")
 import re as _re3
+# Structured data must never assert a rating or a price we cannot stand behind.
+# The seeded catalog carries invented rating/reviewCount columns and invented
+# retailer prices; publishing them as schema.org Product data told Google that
+# 1,820 people had rated a shoe two people had reviewed, and quoted prices at
+# named retailers we had never checked.
+if prods:
+    st, phtml, _ = anon.page(f"/product/{prods[0]['slug']}")
+    ld = [json.loads(m) for m in _re3.findall(
+        r'<script type="application/ld\+json">(.*?)</script>', phtml, _re3.S)]
+    prod_ld = next((d for d in ld if isinstance(d, dict) and d.get("@type") == "Product"), None)
+    ok("product page emits Product structured data", prod_ld is not None)
+    if prod_ld:
+        ok("no offer prices are asserted", "offers" not in prod_ld, str(prod_ld.get("offers"))[:80])
+        ok("a brand identifier is present", bool(prod_ld.get("brand", {}).get("name")))
+        ar = prod_ld.get("aggregateRating")
+        rv = prod_ld.get("review") or []
+        ok("any rating is backed by reviews we actually hold",
+           ar is None or ar.get("reviewCount", 0) == len(rv),
+           f"count={ar and ar.get('reviewCount')} reviews={len(rv)}")
+        ok("no seeded review counts leak into schema",
+           ar is None or ar.get("reviewCount", 0) < 100, str(ar))
 st, body, _ = anon.page("/sitemap.xml")
 ok("sitemap serves", st == 200, f"{st}")
 sitemap_urls = _re3.findall(r"<loc>(.*?)</loc>", body)
