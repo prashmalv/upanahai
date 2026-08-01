@@ -339,6 +339,15 @@ ok("no percentage is published below the floor",
 
 import re as _re4
 print("\n=== the catalog is real ===")
+# Footwear only. A soccer jersey reached the live catalog because the exclusion
+# list held "short" and the title said "Shorts".
+NOT_SHOES = ["jersey", "tshirt", "shirt", "legging", "short", "vest", "cap",
+             "bag", "belt", "wallet", "sock", "glove", "hoodie", "jacket", "trouser"]
+st, allb, _ = anon.page("/search")
+names = _re4.findall(r'hover:text-brand-700">([^<]{3,80})</h3>', allb)
+strays = [n for n in names
+          if any(_re4.search(rf"(^|[^a-z]){w}s?([^a-z]|$)", n.lower()) for w in NOT_SHOES)]
+ok("every card on the browse page is footwear", not strays, str(strays[:4]))
 st, cbody, _ = anon.page("/search")
 card_brands = _re4.findall(r'text-brand-600">([A-Z][^<]{1,22})</span>', cbody)
 ok("a broad browse shows more than one brand", len(set(card_brands)) >= 4,

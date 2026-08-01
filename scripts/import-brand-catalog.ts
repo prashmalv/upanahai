@@ -104,10 +104,23 @@ type ShopifyProduct = {
 };
 
 /** Words that mean "this is not footwear". A belt in a shoe directory is a bug. */
+/**
+ * Words that mean "this is not footwear". A jersey in a shoe directory is a bug.
+ *
+ * Stems, not exact words — the matcher allows a trailing "s". Written as exact
+ * words the list contained "short" and let seven Fila listings through, because
+ * the title says "Shorts" and a whole-word match on "short" does not fire on it.
+ * Five soccer jerseys and a legging came in the same way.
+ *
+ * "dress" is deliberately absent: Tresmode's dress flats and dress sandals are
+ * footwear, and excluding them would lose eleven real listings to catch nothing.
+ */
 const NOT_FOOTWEAR = [
-  "belt", "wallet", "sock", "socks", "bag", "backpack", "cap", "hat", "tshirt",
-  "t-shirt", "shirt", "jacket", "trouser", "short", "watch", "perfume", "deodorant",
-  "care kit", "shoe care", "polish", "insole", "lace", "laces", "mask", "gift card",
+  "belt", "wallet", "sock", "bag", "backpack", "cap", "hat", "tshirt",
+  "t-shirt", "shirt", "jersey", "tee", "hoodie", "sweatshirt", "jacket", "trouser",
+  "short", "legging", "track pant", "trackpant", "pant", "vest", "cargo",
+  "watch", "perfume", "deodorant", "bottle", "glove", "helmet", "racket",
+  "care kit", "shoe care", "polish", "insole", "lace", "mask", "gift card",
   "gift voucher", "voucher", "sunglass", "jewellery", "towel", "cleaner", "cleaning",
   "keychain", "accessory", "accessories", "spray", "brush", "shoe tree", "umbrella"
 ];
@@ -141,7 +154,8 @@ function textOf(p: ShopifyProduct): string {
 function isFootwear(p: ShopifyProduct): boolean {
   const t = `${p.title} ${p.product_type || ""}`.toLowerCase();
   return !NOT_FOOTWEAR.some((w) =>
-    new RegExp(`(^|[^a-z])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z]|$)`).test(t)
+    // Trailing "s" is optional so "shorts" matches the stem "short".
+    new RegExp(`(^|[^a-z])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}s?([^a-z]|$)`).test(t)
   );
 }
 
