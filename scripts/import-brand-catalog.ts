@@ -98,8 +98,9 @@ type ShopifyProduct = {
   body_html?: string;
   product_type?: string;
   tags?: string[] | string;
-  variants?: { price?: string; compare_at_price?: string | null; available?: boolean }[];
+  variants?: { price?: string; compare_at_price?: string | null; available?: boolean; sku?: string }[];
   images?: { src?: string }[];
+  options?: { name?: string; values?: string[] }[];
 };
 
 /** Words that mean "this is not footwear". A belt in a shoe directory is a bug. */
@@ -202,6 +203,22 @@ function tagsOf(p: ShopifyProduct, category: string): string {
   return Array.from(new Set([category, ...clean])).slice(0, 14).join(",");
 }
 
+/**
+ * The colourway, in the brand's own words.
+ *
+ * Several brands publish each colour as its own listing with an identical title —
+ * Relaxo has three "Shoes for Men SM-1120", Bacca Bucci four "Discovery Vulcan" —
+ * so without this the catalog carries pages that are indistinguishable to a
+ * shopper and duplicate titles to a search engine. Whatever the brand puts in its
+ * Color option is used verbatim, even when that is a code like DGRT: their code is
+ * a fact, and inventing "Dark Grey" from it would not be.
+ */
+function colorOf(p: ShopifyProduct): string {
+  const opt = (p.options || []).find((o) => /colou?r/i.test(o.name || ""));
+  const v = (opt?.values || []).find((x) => x && x.trim());
+  return (v || "").trim().slice(0, 32);
+}
+
 function slugOf(brand: string, handle: string): string {
   return `${brand}-${handle}`
     .toLowerCase()
@@ -237,6 +254,8 @@ async function fetchFeed(origin: string): Promise<ShopifyProduct[]> {
 async function main() {
   const known = new Set(BRAND_DIRECTORY.map((b) => b.name));
   const now = new Date();
+  // Page titles already claimed, so no two listings share one.
+  const namesSeen = new Set<string>();
   let imported = 0;
   let skipped = 0;
   const failures: string[] = [];
@@ -264,17 +283,42 @@ async function main() {
     for (const p of take) {
       const price = Math.round(Number(p.variants![0].price));
       const category = categoryOf(p, src.brand);
+      const color = colorOf(p);
       const slug = slugOf(src.brand, p.handle);
       const url = `${src.origin}/products/${p.handle}`;
       const data = {
         brand: src.brand,
-        name: p.title.trim().slice(0, 140),
+        // Disambiguate only when it is needed: a shopper reading one listing does
+        // not want a colour code bolted onto the name for no reason. Fall through
+        // to the handle when the colour does not separate them either — Campus
+        // publishes two "NERLO White Women's Running Shoes", both in White.
+        name: (() => {
+          const base = p.title.trim().slice(0, 140);
+          const taken = (n: string) => namesSeen.has(`${src.brand}|${n}`.toLowerCase());
+          const claim = (n: string) => {
+            namesSeen.add(`${src.brand}|${n}`.toLowerCase());
+            return n;
+          };
+          if (!taken(base)) return claim(base);
+          const withColor = color ? `${base} (${color})` : "";
+          if (withColor && !taken(withColor)) return claim(withColor);
+          // The brand's own SKU, minus the trailing size. Campus publishes three
+          // "NERLO White Women's Running Shoes" all in White, and their SKUs are
+          // what actually tells them apart: OFWHT-WHTPPR, WHITE-YUCCA, WHT-PNKDWOOD.
+          const sku = (p.variants?.[0]?.sku || "").replace(/-\d+$/, "").trim();
+          const withSku = sku ? `${base} (${sku})` : "";
+          if (withSku && !taken(withSku)) return claim(withSku);
+          for (let n = 2; ; n++) {
+            const numbered = `${base} (${n})`;
+            if (!taken(numbered)) return claim(numbered);
+          }
+        })(),
         slug,
         gender: genderOf(p),
         category,
         description: describe(p, src.brand, category),
         imageUrl: p.images![0].src!,
-        colorway: "",
+        colorway: color,
         basePrice: price,
         // Left at zero on purpose: see the header. No invented ratings, no
         // invented support scores.
