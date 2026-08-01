@@ -20,7 +20,7 @@ import { headers } from "next/headers";
  * request to not be counted: it grants nothing, so a stranger sending it can
  * exclude their own visit and that is all.
  */
-function isOurOwnTraffic(): boolean {
+export function isOurOwnTraffic(): boolean {
   try {
     return headers().get("x-upanah-sanity") === "1";
   } catch {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession, ensureVisitorId, readVisitorId } from "@/lib/auth";
 import { SURVEY, surveyResults } from "@/lib/buyerSurvey";
+import { isOurOwnTraffic } from "@/lib/track";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,15 @@ export async function POST(req: NextRequest) {
   if (!q) return NextResponse.json({ error: "Unknown question" }, { status: 400 });
   if (!q.choices.some((c) => c.key === choice)) {
     return NextResponse.json({ error: "Unknown option" }, { status: 400 });
+  }
+
+  // Our own sweep answers every question to test this endpoint, and the survey
+  // publishes percentages — so without this the automated run votes, exactly as it
+  // once did on the demand board. Answering still succeeds so the test passes; it
+  // simply is not counted.
+  if (isOurOwnTraffic()) {
+    const [result] = await surveyResults(question);
+    return NextResponse.json({ ok: true, counted: false, result });
   }
 
   // Issue the anonymous id here rather than reading one. It is otherwise only
