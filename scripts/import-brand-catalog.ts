@@ -47,7 +47,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * wait and try again, not to give up in the middle of a job that has no safe
  * halfway point.
  */
-async function resilient<T>(what: string, fn: () => Promise<T>, tries = 6): Promise<T> {
+async function resilient<T>(what: string, fn: () => Promise<T>, tries = 8): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
       return await fn();
@@ -56,7 +56,7 @@ async function resilient<T>(what: string, fn: () => Promise<T>, tries = 6): Prom
       const transient = /disk I\/O error|database is locked|SQLITE_BUSY/i.test(msg);
       if (!transient || attempt >= tries) throw e;
       console.log(`    retry ${attempt} (${what}): ${msg.slice(0, 60)}`);
-      await sleep(500 * attempt);
+      await sleep(800 * attempt);
     }
   }
 }
@@ -219,12 +219,24 @@ function colorOf(p: ShopifyProduct): string {
   return (v || "").trim().slice(0, 32);
 }
 
+/**
+ * A URL slug that stays unique after truncation.
+ *
+ * Cutting at 90 characters lost the end of the handle, and the end is exactly
+ * where the distinguishing part lives: Paragon's handles run to a hundred-odd
+ * characters of marketing copy and finish with the colour code, so three sandals
+ * became one slug and silently overwrote each other — eleven listings vanished
+ * that way. Keep the head for readability and the tail because it is the part that
+ * differs.
+ */
 function slugOf(brand: string, handle: string): string {
-  return `${brand}-${handle}`
+  const full = `${brand}-${handle}`
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 90);
+    .replace(/^-|-$/g, "");
+  if (full.length <= 90) return full;
+  const tail = full.slice(-24).replace(/^-/, "");
+  return `${full.slice(0, 90 - tail.length - 1)}-${tail}`;
 }
 
 async function fetchFeed(origin: string): Promise<ShopifyProduct[]> {
@@ -256,6 +268,12 @@ async function main() {
   const now = new Date();
   // Page titles already claimed, so no two listings share one.
   const namesSeen = new Set<string>();
+  // Slugs written this run, and the brands whose feed we actually reached. A
+  // listing that has dropped out of a brand's feed will never have its price
+  // refreshed again, so it goes — but only for brands we successfully fetched,
+  // or one unreachable store would wipe its own section of the catalog.
+  const seenSlugs = new Set<string>();
+  const fetchedBrands = new Set<string>();
   let imported = 0;
   let skipped = 0;
   const failures: string[] = [];
@@ -279,7 +297,15 @@ async function main() {
     });
     skipped += feed.length - usable.length;
 
+    fetchedBrands.add(src.brand);
+
     const take = usable.slice(0, PER_BRAND);
+    // Collected first, written once. Writing each listing as it is built meant
+    // roughly 840 separate write transactions against a SQLite file on an SMB
+    // share, while the live app was writing page views to the same file — and the
+    // share's locking gives up under that, with "disk I/O error", partway through.
+    // One transaction per brand takes the write lock fourteen times instead.
+    const pending: { data: any; offer: any }[] = [];
     for (const p of take) {
       const price = Math.round(Number(p.variants![0].price));
       const category = categoryOf(p, src.brand);
@@ -334,42 +360,79 @@ async function main() {
         sourcedAt: now
       };
 
-      if (DRY) {
-        imported++;
-        continue;
-      }
-
-      const product = await resilient(`upsert ${slug}`, () =>
-        prisma.product.upsert({ where: { slug }, update: data, create: data })
-      );
-
-      // One offer: the brand's own store, at the price they list, linking to the
-      // actual product page. Replaced rather than added to, so a re-run cannot
-      // stack up stale prices. Both writes in one transaction, so a failure between
-      // them can never leave a listing with no price at all.
-      await resilient(`offer ${slug}`, () =>
-        prisma.$transaction([
-          prisma.offer.deleteMany({ where: { productId: product.id } }),
-          prisma.offer.create({
-            data: {
-              productId: product.id,
-              retailer: src.storeName,
-              price,
-              url,
-              inStock: (p.variants![0].available ?? true) !== false,
-              deliveryDays: 0,
-              retailerRating: 0,
-              capturedAt: now
-            }
-          })
-        ])
-      );
-      imported++;
+      pending.push({
+        data,
+        offer: {
+          retailer: src.storeName,
+          price,
+          url,
+          inStock: (p.variants![0].available ?? true) !== false,
+          deliveryDays: 0,
+          retailerRating: 0,
+          capturedAt: now
+        }
+      });
     }
+    if (!DRY && pending.length) {
+      await resilient(`write ${src.brand}`, () =>
+        prisma.$transaction(
+          pending.flatMap((row) => [
+            prisma.product.upsert({
+              where: { slug: row.data.slug },
+              update: row.data,
+              create: row.data
+            }),
+            // Offers are replaced rather than appended, so a re-run cannot stack
+            // up yesterday's price beside today's.
+            prisma.offer.deleteMany({ where: { product: { slug: row.data.slug } } }),
+            prisma.offer.create({
+              data: { ...row.offer, product: { connect: { slug: row.data.slug } } }
+            })
+          ])
+        )
+      );
+    }
+    imported += pending.length;
+    for (const row of pending) seenSlugs.add(row.data.slug);
+
     console.log(
-      `  ok     ${src.brand.padEnd(16)} ${take.length} imported ` +
+      `  ok     ${src.brand.padEnd(16)} ${pending.length} imported ` +
         `(${usable.length} usable of ${feed.length} in feed)`
     );
+    // Let the live app get a turn at the file before the next brand.
+    if (!DRY) await sleep(600);
+  }
+
+  if (!DRY && fetchedBrands.size > 0) {
+    const stale = await resilient("find stale", () =>
+      prisma.product.findMany({
+        where: {
+          brand: { in: Array.from(fetchedBrands) },
+          NOT: { sourcedFrom: "" },
+          slug: { notIn: Array.from(seenSlugs) }
+        },
+        select: { id: true, slug: true, wishlist: { select: { id: true } }, feedback: { select: { id: true } } }
+      })
+    );
+    // Anything a shopper has saved or reviewed stays: their wishlist should not
+    // empty itself because a brand reshuffled its storefront.
+    const removable = stale.filter((x) => x.wishlist.length === 0 && x.feedback.length === 0);
+    if (removable.length) {
+      const ids = removable.map((x) => x.id);
+      await resilient("prune stale", () =>
+        prisma.$transaction([
+          prisma.offer.deleteMany({ where: { productId: { in: ids } } }),
+          prisma.product.deleteMany({ where: { id: { in: ids } } })
+        ])
+      );
+    }
+    const kept = stale.length - removable.length;
+    if (stale.length) {
+      console.log(
+        `\n  pruned ${removable.length} listing(s) no longer in a brand's feed` +
+          (kept ? `, kept ${kept} that a shopper had saved or reviewed` : "")
+      );
+    }
   }
 
   if (DROP_SEED && !DRY) {
