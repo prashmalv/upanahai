@@ -360,6 +360,12 @@ if ADMIN_PW:
     ok("the dashboard lists registered users", "Registered users" in body)
     ok("the dashboard shows reset requests", "Password reset requests" in body)
 
+    # Dismiss the request this run raised for an address that never existed.
+    # Leaving it would put a permanent fake entry in a queue whose whole purpose
+    # is to be short enough for a person to work through.
+    st, _, _ = admin.go("/api/admin/reset-requests/clear", {"email": f"ghost{tag}@example.com"})
+    ok("the suite clears the request it raised", st == 200, f"{st}")
+
     for w in [7, 30, 90, 365]:
         st, _, _ = admin.go(f"/admin?days={w}")
         ok(f"dashboard window {w}d", st == 200, f"{st}")
