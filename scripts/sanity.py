@@ -318,6 +318,24 @@ if ADMIN_PW:
         st, _, _ = admin.go(f"/admin?days={w}")
         ok(f"dashboard window {w}d", st == 200, f"{st}")
 
+print("\n=== the buyer survey ===")
+st, body, _ = anon.go("/api/survey", {"question": "old-shoes", "choice": "give-away"})
+ok("a first-time visitor can answer", st == 200, f"{st} {body[:80]}")
+st, _, _ = anon.go("/api/survey", {"question": "not-a-question", "choice": "x"})
+ok("an unknown question is refused", st == 400, f"{st}")
+st, _, _ = anon.go("/api/survey", {"question": "old-shoes", "choice": "not-an-option"})
+ok("an unknown option is refused", st == 400, f"{st}")
+st, body, _ = anon.go("/api/survey", {"question": "old-shoes", "choice": "repair"})
+ok("changing an answer is allowed", st == 200, f"{st}")
+st, body, _ = anon.go("/api/survey")
+mine = json.loads(body).get("mine", {})
+ok("one person holds one answer per question", mine.get("old-shoes") == "repair", str(mine))
+st, body, _ = anon.page("/survey")
+ok("survey page loads", st == 200, f"{st}")
+ok("the survey explains what it does with answers", "anonymous" in body.lower())
+ok("no percentage is published below the floor",
+   "Nothing worth publishing yet" in body or "%" in body)
+
 import re as _re4
 print("\n=== the catalog is real ===")
 st, cbody, _ = anon.page("/search")

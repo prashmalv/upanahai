@@ -60,6 +60,7 @@ model User {
   searchLogs    SearchLog[]
   events        Event[]
   careEpisodes  CareEpisode[]
+  surveyAnswers SurveyAnswer[]
 
   @@index([role])
   @@index([state])
@@ -411,4 +412,31 @@ model BrandPick {
 
   @@unique([brand, url])
   @@index([brand, position])
+}
+
+// ---------------------------------------------------------------------------
+// How people actually buy footwear.
+//
+// Not a quiz with right answers — a question with no answer key, asked to find
+// out what shoppers do: what happens to the old pair, whether anyone compares
+// before buying, who in the family is hardest to buy for. Nobody publishes this
+// for India, and it is the one dataset this platform is positioned to collect.
+//
+// One person answers each question once. The unique constraint is what makes a
+// percentage honest: without it, one enthusiastic visitor tapping the same option
+// twenty times becomes "68% of shoppers".
+// ---------------------------------------------------------------------------
+model SurveyAnswer {
+  id        String   @id @default(cuid())
+  question  String
+  choice    String
+  // Anonymous by default. No login is required to answer, because requiring one
+  // would bias the sample towards people already invested in the platform.
+  visitorId String
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@unique([visitorId, question])
+  @@index([question])
 }

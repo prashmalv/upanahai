@@ -48,6 +48,7 @@ Currency: INR. Market: India.
 - [Foot health: method and limits](${b}/foot-health): how the screening works, what it refuses to do, and how outcomes are measured.
 - [Data & privacy](${b}/data-and-privacy): what is collected, consent, and deletion.
 - [What India is searching for](${b}/trends): our own demand data — most-wanted shoe types, brands and needs, counted in people, never presented as sales figures.
+- [How India buys footwear](${b}/survey): an open, anonymous survey on footwear buying behaviour — what happens to old pairs, whether shoppers compare, who is hardest to buy for — with running results published as they come in.
 - [Brand directory](${b}/brands): Indian and international footwear brands by category, with ratings.
 - [Size charts](${b}/size-chart): brand-by-brand size charts and comparison.
 - [Community](${b}/community): public questions and answers about buying footwear in India.

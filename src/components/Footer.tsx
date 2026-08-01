@@ -54,6 +54,7 @@ export function Footer() {
           <p className="mb-3 text-sm font-semibold text-slate-900">Community</p>
           <ul className="space-y-2 text-sm text-slate-500">
             <li><Link href="/trends" className="hover:text-brand-600">What India is searching for</Link></li>
+            <li><Link href="/survey" className="hover:text-brand-600">How India buys footwear</Link></li>
             <li><Link href="/brands" className="hover:text-brand-600">Brand ratings</Link></li>
             <li><Link href="/community" className="hover:text-brand-600">Ask the community</Link></li>
             <li><Link href="/community?kind=advice" className="hover:text-brand-600">Should I buy it?</Link></li>

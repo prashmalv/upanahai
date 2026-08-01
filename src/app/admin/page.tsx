@@ -16,6 +16,7 @@ import {
 import { StatTile, BarList, Sparkline } from "@/components/admin/Charts";
 import { LogoutButton } from "@/components/LogoutButton";
 import { MIN_EPISODES_FOR_RATE } from "@/lib/outcomes";
+import { surveyResults, surveyRespondents, MIN_ANSWERS } from "@/lib/buyerSurvey";
 import {
   ShieldCheck, Users, Search, MessageSquare, TrendingUp, ImageOff, ArrowUpRight, HeartPulse
 } from "lucide-react";
@@ -40,7 +41,8 @@ export default async function AdminPage({
     ? Number(searchParams.days)
     : 30) as Window;
 
-  const [overview, geo, demand, trend, brands, interest, catalog, leads, outcomes] = await Promise.all([
+  const [overview, geo, demand, trend, brands, interest, catalog, leads, outcomes,
+         survey, surveyPeople] = await Promise.all([
     getOverview(days),
     getGeography(days),
     getDemand(days),
@@ -51,7 +53,9 @@ export default async function AdminPage({
     getBrandLeads(days),
     // Not windowed: an outcome loop that only counted the last 30 days would
     // discard every follow-up the moment it became answerable.
-    getHealthOutcomes()
+    getHealthOutcomes(),
+    surveyResults(),
+    surveyRespondents()
   ]);
 
   const engagementRate =
@@ -325,6 +329,43 @@ export default async function AdminPage({
           empty="No brand click-throughs yet"
         />
       </div>
+
+      {/* buyer behaviour — the dataset nobody else has */}
+      <h2 className="mt-12 flex items-center gap-2 text-lg font-black text-slate-900">
+        <Users size={18} className="text-indigo-600" /> How people buy footwear
+      </h2>
+      <p className="mt-1 text-sm text-slate-500">
+        {surveyPeople} {surveyPeople === 1 ? "person has" : "people have"} answered the
+        open survey. Sales figures say what sold; this says who the buyer was
+        struggling to buy for, what happened to the pair they replaced, and whether
+        anyone compared. No question is scored until {MIN_ANSWERS} people have
+        answered it.
+      </p>
+
+      {surveyPeople === 0 ? (
+        <p className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
+          No answers yet. The survey is at{" "}
+          <Link href="/survey" className="font-semibold text-brand-600 hover:underline">/survey</Link>.
+        </p>
+      ) : (
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          {survey
+            .filter((q) => q.total > 0)
+            .map((q) => (
+              <BarList
+                key={q.key}
+                title={q.short}
+                subtitle={`${q.question} · ${q.total} ${q.total === 1 ? "answer" : "answers"}${
+                  q.total < MIN_ANSWERS ? " — too few to read as a percentage" : ""
+                }`}
+                rows={q.choices
+                  .filter((c) => c.count > 0)
+                  .map((c) => ({ key: c.label, count: c.count }))}
+                empty="Nobody has answered this yet"
+              />
+            ))}
+        </div>
+      )}
 
       {/* health outcomes — the only section that measures whether we helped */}
       <h2 className="mt-12 flex items-center gap-2 text-lg font-black text-slate-900">

@@ -60,11 +60,11 @@ export default async function HomePage() {
 
         <div className="container-app relative w-full text-white">
           <div className="animate-fade-in">
-            {/* Badge row — the tagline sits here because the lower hero is bright artwork. */}
+            {/* Tagline row. There was a "Winter Drop 2024" badge here — a seasonal
+                label for a season that has passed, on a site that runs no drops. A
+                stale date in the first thing a visitor sees says the place is
+                unattended. */}
             <div className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2">
-              <span className="inline-block rounded-full bg-indigo-600 px-4 py-1 text-[10px] font-black uppercase tracking-widest shadow-xl">
-                Winter Drop 2024
-              </span>
               <span className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-white/90">
                 <span lang="hi">{SITE.taglineHi}</span>
                 <span aria-hidden className="text-indigo-400">·</span>
