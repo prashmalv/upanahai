@@ -318,6 +318,20 @@ if ADMIN_PW:
         st, _, _ = admin.go(f"/admin?days={w}")
         ok(f"dashboard window {w}d", st == 200, f"{st}")
 
+import re as _re4
+print("\n=== the catalog is real ===")
+st, cbody, _ = anon.page("/search")
+card_brands = _re4.findall(r'text-brand-600">([A-Z][^<]{1,22})</span>', cbody)
+ok("a broad browse shows more than one brand", len(set(card_brands)) >= 4,
+   f"{len(set(card_brands))} distinct: {sorted(set(card_brands))[:6]}")
+ok("no card claims a rating nobody gave",
+   "No reviews yet" in cbody or "review" in cbody.lower(), "")
+if prods:
+    st, pbody, _ = anon.page(f"/product/{prods[0]['slug']}")
+    ok("a listing says where its price came from", "read from" in pbody, "")
+    ok("prices are not passed off as live", "not live" in pbody)
+    ok("no invented delivery estimate is shown", "0d delivery" not in pbody)
+
 print("\n=== what we are telling Google ===")
 import re as _re3
 # Structured data must never assert a rating or a price we cannot stand behind.

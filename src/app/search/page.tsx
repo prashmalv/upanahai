@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { getSession, readVisitorId } from "@/lib/auth";
 import { logSearch } from "@/lib/track";
 import { parseSearchIntent, explainRecommendation, aiEnabled } from "@/lib/ai";
-import { deriveIntent, scoreProducts } from "@/lib/recommender";
+import { deriveIntent, scoreProducts, spreadByBrand } from "@/lib/recommender";
 import { toCard, DISPLAYABLE } from "@/lib/products";
 import { ProductCard } from "@/components/ProductCard";
 import { SearchBar } from "@/components/SearchBar";
@@ -113,9 +113,9 @@ export default async function SearchPage({ searchParams }: { searchParams: SP })
 
   // Only displayable products enter the ranking pool.
   const all = await prisma.product.findMany({ where: DISPLAYABLE, include: { offers: true } });
-  const ranked = scoreProducts(all, intent)
-    .filter((r) => r.score > -10)
-    .slice(0, 24);
+  const ranked = spreadByBrand(
+    scoreProducts(all, intent).filter((r) => r.score > -10)
+  ).slice(0, 24);
 
   const cards = ranked.map((r) => ({ card: toCard(r.product, r.reasons), score: r.score }));
 

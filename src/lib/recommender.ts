@@ -192,3 +192,52 @@ export function scoreByImageMatch(
 
   return scored.sort((a, b) => b.score - a.score);
 }
+
+/**
+ * Spread brands across the results when the ranking cannot tell them apart.
+ *
+ * Every imported listing starts with no reviews, so for a broad browse the scores
+ * tie and a stable sort falls back to insertion order — which is import order, so
+ * the first page of /search was twenty-four Campus products and nothing else. A
+ * shopper reads that as "this site only has Campus", and it makes the catalog look
+ * both smaller and less neutral than it is.
+ *
+ * So among results whose scores are effectively equal, take one per brand in turn.
+ * Genuine score differences are preserved: this only reorders within a band, and a
+ * product that scored better still comes first.
+ */
+export function spreadByBrand<T extends { product: { brand: string }; score: number }>(
+  ranked: T[],
+  band = 5
+): T[] {
+  const out: T[] = [];
+  let i = 0;
+  while (i < ranked.length) {
+    // Collect the run of results close enough in score to be interchangeable.
+    const top = ranked[i].score;
+    let j = i;
+    while (j < ranked.length && top - ranked[j].score <= band) j++;
+    const group = ranked.slice(i, j);
+
+    const byBrand = new Map<string, T[]>();
+    for (const r of group) {
+      const k = r.product.brand;
+      if (!byBrand.has(k)) byBrand.set(k, []);
+      byBrand.get(k)!.push(r);
+    }
+    // Round-robin: one from each brand, then the next from each, and so on.
+    let added = true;
+    while (added) {
+      added = false;
+      for (const list of Array.from(byBrand.values())) {
+        const next = list.shift();
+        if (next) {
+          out.push(next);
+          added = true;
+        }
+      }
+    }
+    i = j;
+  }
+  return out;
+}
