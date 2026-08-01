@@ -286,26 +286,32 @@ ok("standing suggests one concrete next step", "Measure your feet" in body or "R
    or "Answer someone" in body or "Review another brand" in body)
 ok("nothing rewards merely logging in", "streak" not in body.lower())
 
-print("\n=== locked out, and getting back in ===")
+# The lockout journey needs an admin to finish: the reset, the dismissal and the
+# account deletion all happen on the admin side. Run without the admin password
+# and it would create an account and two reset requests it could never clear —
+# debris in a live queue whose whole value is being short enough to work through.
+# So it runs only when it can clean up after itself.
 lost_email = f"lost{tag}@example.com"
-lost = Client()
-lost.go("/api/auth/signup", {"email": lost_email, "password": "OriginalPass123",
-                             "name": "Locked Out", "accountType": "user"})
-lost.go("/api/auth/logout", {})
+if ADMIN_PW:
+    print("\n=== locked out, and getting back in ===")
+    lost = Client()
+    lost.go("/api/auth/signup", {"email": lost_email, "password": "OriginalPass123",
+                                 "name": "Locked Out", "accountType": "user"})
+    lost.go("/api/auth/logout", {})
 
-st, body, _ = anon.go("/api/auth/reset-request", {"email": lost_email, "note": "forgot it"})
-reply = json.loads(body).get("message", "")
-ok("a reset can be requested", st == 200, f"{st} {body[:80]}")
-st, body2, _ = anon.go("/api/auth/reset-request", {"email": f"ghost{tag}@example.com"})
-ok("the reply is identical for an address with no account",
-   json.loads(body2).get("message") == reply, body2[:100])
-ok("a malformed address is refused",
-   anon.go("/api/auth/reset-request", {"email": "not-an-email"})[0] == 400)
+    st, body, _ = anon.go("/api/auth/reset-request", {"email": lost_email, "note": "forgot it"})
+    reply = json.loads(body).get("message", "")
+    ok("a reset can be requested", st == 200, f"{st} {body[:80]}")
+    st, body2, _ = anon.go("/api/auth/reset-request", {"email": f"ghost{tag}@example.com"})
+    ok("the reply is identical for an address with no account",
+       json.loads(body2).get("message") == reply, body2[:100])
+    ok("a malformed address is refused",
+       anon.go("/api/auth/reset-request", {"email": "not-an-email"})[0] == 400)
 
-st, _, _ = anon.go("/api/admin/reset-password", {"email": lost_email})
-ok("anonymous cannot reset anyone", st == 401, f"{st}")
-st, _, _ = shopper.go("/api/admin/reset-password", {"email": lost_email})
-ok("an ordinary user cannot reset anyone", st == 403, f"{st}")
+    st, _, _ = anon.go("/api/admin/reset-password", {"email": lost_email})
+    ok("anonymous cannot reset anyone", st == 401, f"{st}")
+    st, _, _ = shopper.go("/api/admin/reset-password", {"email": lost_email})
+    ok("an ordinary user cannot reset anyone", st == 403, f"{st}")
 
 print("\n=== privilege boundaries ===")
 st, _, loc = shopper.go("/admin", follow=False)
