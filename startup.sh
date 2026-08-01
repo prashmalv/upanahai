@@ -94,8 +94,20 @@ p.product.count({ where: { NOT: { sourcedFrom: '' } } })
   .then((n) => { console.log(n); return p.\$disconnect(); })
   .catch(() => { console.log(0); return p.\$disconnect(); });
 " 2>/dev/null | tail -1)
-if [ "${REAL:-0}" -lt 50 ]; then
-  echo "[startup] catalog has ${REAL:-0} real listings — importing from brand stores"
+# The guard has to consider BOTH numbers. A first attempt used "fewer than 50 real
+# listings", and when a production import died two brands in it left 63 real rows
+# beside 16 invented ones — over the threshold, so every later boot skipped the
+# import and the invented rows would have lived there forever. Finish the job if
+# either there is little real data or any seeded row survives.
+SEEDED=$(npx --no-install tsx -e "
+import { PrismaClient } from '@prisma/client';
+const p = new PrismaClient();
+p.product.count({ where: { sourcedFrom: '' } })
+  .then((n) => { console.log(n); return p.\$disconnect(); })
+  .catch(() => { console.log(0); return p.\$disconnect(); });
+" 2>/dev/null | tail -1)
+if [ "${REAL:-0}" -lt 200 ] || [ "${SEEDED:-0}" -gt 0 ]; then
+  echo "[startup] catalog: ${REAL:-0} real, ${SEEDED:-0} seeded — importing from brand stores"
   npx --no-install tsx scripts/import-brand-catalog.ts --per-brand 30 --drop-seed || \
     echo "[startup] catalog import failed — leaving the catalog as it is"
 else

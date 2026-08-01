@@ -34,6 +34,33 @@ import { BRAND_DIRECTORY } from "../src/lib/brandDirectory";
 
 const prisma = new PrismaClient();
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Retry a write that failed transiently.
+ *
+ * The database is SQLite on an SMB mount, and on App Service a restart overlaps
+ * the old container with the new one — so for a few seconds two processes have the
+ * file open and writes come back as `SqliteError: disk I/O error`. That killed a
+ * production import two brands in, leaving a half-real catalog with the invented
+ * rows still in it. The error is transient by nature, so the right response is to
+ * wait and try again, not to give up in the middle of a job that has no safe
+ * halfway point.
+ */
+async function resilient<T>(what: string, fn: () => Promise<T>, tries = 6): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      const msg = String((e as Error).message || "");
+      const transient = /disk I\/O error|database is locked|SQLITE_BUSY/i.test(msg);
+      if (!transient || attempt >= tries) throw e;
+      console.log(`    retry ${attempt} (${what}): ${msg.slice(0, 60)}`);
+      await sleep(500 * attempt);
+    }
+  }
+}
+
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
   "(KHTML, like Gecko) Chrome/124.0 Safari/537.36";
@@ -268,28 +295,31 @@ async function main() {
         continue;
       }
 
-      const product = await prisma.product.upsert({
-        where: { slug },
-        update: data,
-        create: data
-      });
+      const product = await resilient(`upsert ${slug}`, () =>
+        prisma.product.upsert({ where: { slug }, update: data, create: data })
+      );
 
       // One offer: the brand's own store, at the price they list, linking to the
       // actual product page. Replaced rather than added to, so a re-run cannot
-      // stack up stale prices.
-      await prisma.offer.deleteMany({ where: { productId: product.id } });
-      await prisma.offer.create({
-        data: {
-          productId: product.id,
-          retailer: src.storeName,
-          price,
-          url,
-          inStock: (p.variants![0].available ?? true) !== false,
-          deliveryDays: 0,
-          retailerRating: 0,
-          capturedAt: now
-        }
-      });
+      // stack up stale prices. Both writes in one transaction, so a failure between
+      // them can never leave a listing with no price at all.
+      await resilient(`offer ${slug}`, () =>
+        prisma.$transaction([
+          prisma.offer.deleteMany({ where: { productId: product.id } }),
+          prisma.offer.create({
+            data: {
+              productId: product.id,
+              retailer: src.storeName,
+              price,
+              url,
+              inStock: (p.variants![0].available ?? true) !== false,
+              deliveryDays: 0,
+              retailerRating: 0,
+              capturedAt: now
+            }
+          })
+        ])
+      );
       imported++;
     }
     console.log(
@@ -299,10 +329,9 @@ async function main() {
   }
 
   if (DROP_SEED && !DRY) {
-    const seeded = await prisma.product.findMany({
-      where: { sourcedFrom: "" },
-      select: { id: true }
-    });
+    const seeded = await resilient("find seeded", () =>
+      prisma.product.findMany({ where: { sourcedFrom: "" }, select: { id: true } })
+    );
     const ids = seeded.map((s) => s.id);
     if (ids.length) {
       await prisma.$transaction([
