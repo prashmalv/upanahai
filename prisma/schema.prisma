@@ -48,6 +48,10 @@ model User {
   // foot checks matter more than any shoe we could recommend. Asking is the only
   // way to know — inferring it from anything else would be both wrong and creepy.
   diabetesDeclared     Boolean   @default(false)
+  // Set when an admin resets the password by hand. There is no email reset yet,
+  // so a temporary password gets passed to someone over WhatsApp and would
+  // otherwise live forever. The account page will not let it be ignored.
+  mustChangePassword   Boolean   @default(false)
   createdAt            DateTime  @default(now())
 
   wishlist      Wishlist[]
@@ -61,6 +65,7 @@ model User {
   events        Event[]
   careEpisodes  CareEpisode[]
   surveyAnswers SurveyAnswer[]
+  resetRequests PasswordResetRequest[]
 
   @@index([role])
   @@index([state])
@@ -439,4 +444,31 @@ model SurveyAnswer {
 
   @@unique([visitorId, question])
   @@index([question])
+}
+
+// ---------------------------------------------------------------------------
+// Someone locked out, asking to be let back in.
+//
+// There is no email-based reset yet, so this is the honest interim: the request
+// appears in the admin dashboard, the admin resets the password and passes it on.
+// It only works while there are few enough users for a person to keep up, and it
+// should be replaced by a reset link the moment that stops being true.
+// ---------------------------------------------------------------------------
+model PasswordResetRequest {
+  id        String    @id @default(cuid())
+  email     String
+  // Null when the address does not belong to an account. Those are still recorded
+  // so the admin can see someone is trying an address that was never registered —
+  // a typo at signup looks exactly like this.
+  userId    String?
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  note      String    @default("")
+  // open | done | dismissed
+  status    String    @default("open")
+  createdAt DateTime  @default(now())
+  handledAt DateTime?
+
+  @@unique([email, status])
+  @@index([status])
+  @@index([createdAt])
 }

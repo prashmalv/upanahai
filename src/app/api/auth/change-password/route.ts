@@ -41,7 +41,12 @@ export async function POST(req: NextRequest) {
 
   await prisma.user.update({
     where: { id: user.id },
-    data: { passwordHash: await bcrypt.hash(String(newPassword), 10) }
+    // Clearing the flag here is the whole point of it: choosing your own password
+    // is exactly what it was waiting for.
+    data: {
+      passwordHash: await bcrypt.hash(String(newPassword), 10),
+      mustChangePassword: false
+    }
   });
 
   // Re-issue the cookie so the session doesn't outlive the old password.

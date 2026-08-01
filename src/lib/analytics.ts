@@ -436,3 +436,83 @@ export async function getHealthOutcomes() {
     }
   };
 }
+
+/**
+ * Everyone who has registered, and what they have done.
+ *
+ * The dashboard could report that there are eleven users; it could not say who
+ * they were, so a locked-out person or a prolific reviewer was invisible. This is
+ * the operator's own users on their own platform — but it deliberately carries no
+ * health data, no measurements and no password material, because running the
+ * business does not require any of that and a dashboard that shows it becomes a
+ * liability the first time a laptop is left open.
+ */
+export async function getUsers() {
+  const users = await prisma.user.findMany({
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      brandName: true,
+      city: true,
+      state: true,
+      persona: true,
+      createdAt: true,
+      lastLoginAt: true,
+      mustChangePassword: true,
+      _count: {
+        select: {
+          brandFeedback: true,
+          feedback: true,
+          questions: true,
+          answers: true
+        }
+      }
+    }
+  });
+
+  return users.map((u) => ({
+    id: u.id,
+    email: u.email,
+    name: u.name,
+    role: u.role,
+    brandName: u.brandName,
+    where: [u.city, u.state].filter(Boolean).join(", "),
+    persona: u.persona,
+    joined: u.createdAt,
+    lastLogin: u.lastLoginAt,
+    mustChangePassword: u.mustChangePassword,
+    contributions:
+      u._count.brandFeedback + u._count.feedback + u._count.questions + u._count.answers
+  }));
+}
+
+/** Open "I've forgotten my password" requests, newest first. */
+export async function getResetRequests() {
+  const rows = await prisma.passwordResetRequest.findMany({
+    where: { status: "open" },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      email: true,
+      note: true,
+      createdAt: true,
+      userId: true,
+      user: { select: { name: true, role: true } }
+    }
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    email: r.email,
+    note: r.note,
+    at: r.createdAt,
+    // False means nobody ever registered with this address. Worth showing rather
+    // than hiding: it is usually a typo made at signup, and the person is stuck
+    // on an account that does not exist.
+    hasAccount: !!r.userId,
+    name: r.user?.name || "",
+    isAdmin: r.user?.role === "admin"
+  }));
+}

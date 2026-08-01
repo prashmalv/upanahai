@@ -286,6 +286,27 @@ ok("standing suggests one concrete next step", "Measure your feet" in body or "R
    or "Answer someone" in body or "Review another brand" in body)
 ok("nothing rewards merely logging in", "streak" not in body.lower())
 
+print("\n=== locked out, and getting back in ===")
+lost_email = f"lost{tag}@example.com"
+lost = Client()
+lost.go("/api/auth/signup", {"email": lost_email, "password": "OriginalPass123",
+                             "name": "Locked Out", "accountType": "user"})
+lost.go("/api/auth/logout", {})
+
+st, body, _ = anon.go("/api/auth/reset-request", {"email": lost_email, "note": "forgot it"})
+reply = json.loads(body).get("message", "")
+ok("a reset can be requested", st == 200, f"{st} {body[:80]}")
+st, body2, _ = anon.go("/api/auth/reset-request", {"email": f"ghost{tag}@example.com"})
+ok("the reply is identical for an address with no account",
+   json.loads(body2).get("message") == reply, body2[:100])
+ok("a malformed address is refused",
+   anon.go("/api/auth/reset-request", {"email": "not-an-email"})[0] == 400)
+
+st, _, _ = anon.go("/api/admin/reset-password", {"email": lost_email})
+ok("anonymous cannot reset anyone", st == 401, f"{st}")
+st, _, _ = shopper.go("/api/admin/reset-password", {"email": lost_email})
+ok("an ordinary user cannot reset anyone", st == 403, f"{st}")
+
 print("\n=== privilege boundaries ===")
 st, _, loc = shopper.go("/admin", follow=False)
 ok("shopper cannot open /admin", "/admin" != urllib.parse.urlparse(loc).path, f"{st} -> {loc}")
@@ -313,6 +334,31 @@ if ADMIN_PW:
     ok("outcomes state what the evidence is worth", "no control group" in body)
     ok("outcomes suppress rates while the sample is tiny",
        "Not enough answers to quote a rate yet" in body or "reported less pain" in body)
+
+    st, body, _ = admin.go("/api/admin/reset-password", {"email": lost_email})
+    temp = json.loads(body).get("password", "")
+    ok("admin can issue a temporary password", st == 200 and temp.startswith("Upanah-"),
+       f"{st} {body[:80]}")
+    ok("the old password stops working",
+       Client().go("/api/auth/login", {"email": lost_email, "password": "OriginalPass123"})[0] == 401)
+    back = Client()
+    ok("the temporary one works",
+       back.go("/api/auth/login", {"email": lost_email, "password": temp})[0] == 200)
+    st, acct, _ = back.page("/account")
+    ok("they are told to choose their own", "Please choose your own password" in acct)
+    st, _, _ = back.go("/api/auth/change-password",
+                       {"currentPassword": temp, "newPassword": "TheirOwnPass456"})
+    ok("changing it works", st == 200, f"{st}")
+    st, acct, _ = back.page("/account")
+    ok("and the notice clears", "Please choose your own password" not in acct)
+    back.go("/api/account/delete", {"confirm": "DELETE"})
+
+    st, body, _ = admin.go("/api/admin/reset-password", {"email": "prashant.malviya@upanah.com"})
+    ok("an admin password cannot be reset from the dashboard", st == 403, f"{st} {body[:80]}")
+
+    st, body, _ = admin.page("/admin")
+    ok("the dashboard lists registered users", "Registered users" in body)
+    ok("the dashboard shows reset requests", "Password reset requests" in body)
 
     for w in [7, 30, 90, 365]:
         st, _, _ = admin.go(f"/admin?days={w}")

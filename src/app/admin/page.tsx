@@ -11,14 +11,17 @@ import {
   getHiddenProducts,
   getBrandLeads,
   getHealthOutcomes,
+  getUsers,
+  getResetRequests,
   type Window
 } from "@/lib/analytics";
 import { StatTile, BarList, Sparkline } from "@/components/admin/Charts";
 import { LogoutButton } from "@/components/LogoutButton";
 import { MIN_EPISODES_FOR_RATE } from "@/lib/outcomes";
 import { surveyResults, surveyRespondents, MIN_ANSWERS } from "@/lib/buyerSurvey";
+import { ResetRequests } from "@/components/admin/ResetRequests";
 import {
-  ShieldCheck, Users, Search, MessageSquare, TrendingUp, ImageOff, ArrowUpRight, HeartPulse
+  ShieldCheck, Users, Search, MessageSquare, TrendingUp, ImageOff, ArrowUpRight, HeartPulse, KeyRound
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +45,7 @@ export default async function AdminPage({
     : 30) as Window;
 
   const [overview, geo, demand, trend, brands, interest, catalog, leads, outcomes,
-         survey, surveyPeople] = await Promise.all([
+         survey, surveyPeople, users, resetRequests] = await Promise.all([
     getOverview(days),
     getGeography(days),
     getDemand(days),
@@ -55,7 +58,9 @@ export default async function AdminPage({
     // discard every follow-up the moment it became answerable.
     getHealthOutcomes(),
     surveyResults(),
-    surveyRespondents()
+    surveyRespondents(),
+    getUsers(),
+    getResetRequests()
   ]);
 
   const engagementRate =
@@ -328,6 +333,92 @@ export default async function AdminPage({
           rows={leads.leads.map((l) => ({ key: l.brand, count: l.people }))}
           empty="No brand click-throughs yet"
         />
+      </div>
+
+      {/* locked-out people, and everyone who has registered */}
+      <h2 className="mt-12 flex items-center gap-2 text-lg font-black text-slate-900">
+        <KeyRound size={18} className="text-indigo-600" /> Password reset requests
+        {resetRequests.length > 0 && (
+          <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">
+            {resetRequests.length}
+          </span>
+        )}
+      </h2>
+      <p className="mt-1 text-sm text-slate-500">
+        There is no email-based reset yet, so requests land here and you reset by
+        hand. That works while the numbers are small — once this list needs
+        attention daily, it needs to become a link sent by email instead.
+      </p>
+      <ResetRequests
+        requests={resetRequests.map((r) => ({ ...r, at: r.at.toISOString() }))}
+      />
+
+      <h2 className="mt-12 flex items-center gap-2 text-lg font-black text-slate-900">
+        <Users size={18} className="text-indigo-600" /> Registered users
+        <span className="text-sm font-semibold text-slate-400">{users.length}</span>
+      </h2>
+      <p className="mt-1 text-sm text-slate-500">
+        Everyone who has an account. Measurements, health logs and survey answers
+        are deliberately not shown here — running the platform does not need them,
+        and a dashboard that displays them becomes a problem the first time this
+        screen is left open.
+      </p>
+      <div className="mt-4 card overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+            <tr>
+              <th className="p-3">Who</th>
+              <th className="p-3">Role</th>
+              <th className="p-3">Where</th>
+              <th className="p-3">Joined</th>
+              <th className="p-3">Last seen</th>
+              <th className="p-3 text-right">Contributions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {users.map((u) => (
+              <tr key={u.id}>
+                <td className="p-3">
+                  <span className="font-semibold text-slate-900">{u.name || "—"}</span>
+                  <span className="block text-xs text-slate-500">{u.email}</span>
+                  {u.mustChangePassword && (
+                    <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                      must change password
+                    </span>
+                  )}
+                </td>
+                <td className="p-3">
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      u.role === "admin"
+                        ? "bg-indigo-100 text-indigo-700"
+                        : u.role === "brand"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    {u.role}
+                  </span>
+                  {u.brandName && (
+                    <span className="block text-xs text-slate-500">{u.brandName}</span>
+                  )}
+                </td>
+                <td className="p-3 text-slate-600">{u.where || "—"}</td>
+                <td className="p-3 whitespace-nowrap text-xs text-slate-500">
+                  {u.joined.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                </td>
+                <td className="p-3 whitespace-nowrap text-xs text-slate-500">
+                  {u.lastLogin
+                    ? u.lastLogin.toLocaleDateString("en-IN", { day: "numeric", month: "short" })
+                    : "never signed in"}
+                </td>
+                <td className="p-3 text-right font-semibold text-slate-700">
+                  {u.contributions}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       {/* buyer behaviour — the dataset nobody else has */}

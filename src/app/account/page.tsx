@@ -11,6 +11,7 @@ import { LogoutButton } from "@/components/LogoutButton";
 import { ChangePasswordForm } from "@/components/ChangePasswordForm";
 import { DeleteAccount } from "@/components/DeleteAccount";
 import { getContribution, LEVELS } from "@/lib/contribution";
+import { KeyRound } from "lucide-react";
 import {
   User2, Ruler, Heart, Activity, MessageSquare, Star, ShieldCheck,
   BadgeCheck, ArrowRight, Sparkles
@@ -180,6 +181,21 @@ export default async function AccountPage() {
           </span>
         </Link>
       </div>
+
+      {/* A temporary password handed over by an admin has no expiry of its own, so
+          it becomes the permanent one unless something insists otherwise. */}
+      {user?.mustChangePassword && (
+        <div className="mt-6 rounded-2xl bg-amber-50 p-5 ring-1 ring-amber-300">
+          <p className="flex items-center gap-2 font-black text-amber-900">
+            <KeyRound size={17} /> Please choose your own password
+          </p>
+          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-amber-900">
+            The password you signed in with was set for you by hand, which means it
+            was written down somewhere and sent to you. Change it now and that copy
+            stops mattering. The form is at the bottom of this page.
+          </p>
+        </div>
+      )}
 
       {/* contribution standing — what this person has put in, and the single most
           useful thing they could do next. No streaks: rewarding turning up rather
