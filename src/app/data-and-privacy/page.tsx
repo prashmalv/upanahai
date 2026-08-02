@@ -62,7 +62,8 @@ export default function DataAndPrivacyPage() {
               ["Four-week follow-up answers", "Whether you changed your footwear and whether the pain improved. Aggregated to check our guidance is worth anything.", "Until you withdraw consent"],
               ["Reviews, questions and answers you post", "They are public by design — that is the point of them.", "Until you ask us to remove them"],
               ["Page views and searches", "A first-party cookie gives an anonymous id so we can count people rather than requests. No third-party advertising or tracking pixels.", "Aggregated; raw rows pruned over time"],
-              ["Clicks out to brands and retailers", "So we can tell a brand how many people we sent them.", "Aggregated"]
+              ["Clicks out to brands and retailers", "So we can tell a brand how many people we sent them.", "Aggregated"],
+              ["Questions you ask Upanah Mitra", "The question and the answer, against an anonymous browser id rather than your name. We read them to find what the site should answer better. Don't type anything into it you wouldn't want us to read.", "Aggregated; raw questions pruned over time"]
             ]}
           />
           <p className="mt-4 text-sm text-slate-600">

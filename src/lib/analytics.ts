@@ -516,3 +516,52 @@ export async function getResetRequests() {
     isAdmin: r.user?.role === "admin"
   }));
 }
+
+/**
+ * What people ask Upanah Mitra.
+ *
+ * Recorded on the same dimensions as searches — category, brand, audience, need,
+ * budget — so a question typed at the assistant counts as demand rather than
+ * sitting in a transcript nobody opens. Two things here are not in the search
+ * data and are the reason this section exists separately:
+ *
+ *   offTopic  — what people expected a footwear assistant to be able to do. Every
+ *               one of these is a person who wanted something we don't offer.
+ *   health    — how often a shopping box gets used to ask about pain. If that is
+ *               a large number, it says more about the market than any survey.
+ */
+export async function getMitraInsight(days: Window) {
+  const turns = await prisma.mitraTurn.findMany({
+    where: { createdAt: { gte: since(days) } },
+    select: {
+      question: true, onTopic: true, healthFlag: true, usedAI: true, routes: true,
+      category: true, brand: true, audience: true, need: true, maxPrice: true,
+      visitorId: true
+    }
+  });
+
+  const onTopic = turns.filter((t) => t.onTopic);
+  const offTopic = turns.filter((t) => !t.onTopic);
+
+  return {
+    total: turns.length,
+    people: new Set(turns.map((t) => t.visitorId).filter(Boolean)).size,
+    offTopicCount: offTopic.length,
+    healthCount: turns.filter((t) => t.healthFlag).length,
+    // When this climbs, the model was unreachable and people got the keyword
+    // fallback instead of an answer.
+    fallbackCount: turns.filter((t) => !t.usedAI).length,
+    byCategory: tally(onTopic.map((t) => ({ key: t.category }))),
+    byBrand: tally(onTopic.map((t) => ({ key: t.brand }))),
+    byAudience: tally(onTopic.map((t) => ({ key: t.audience }))),
+    byNeed: tally(onTopic.map((t) => ({ key: t.need.toLowerCase() }))),
+    byRoute: tally(
+      onTopic.flatMap((t) => t.routes.split(",").filter(Boolean).map((key) => ({ key })))
+    ),
+    topQuestions: tally(
+      onTopic.map((t) => ({ key: t.question.toLowerCase().trim() }))
+    ).slice(0, 15),
+    // Shown in full rather than counted: the wording is the point.
+    offTopicExamples: offTopic.slice(0, 12).map((t) => t.question)
+  };
+}

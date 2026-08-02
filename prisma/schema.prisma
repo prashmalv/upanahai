@@ -66,6 +66,7 @@ model User {
   careEpisodes  CareEpisode[]
   surveyAnswers SurveyAnswer[]
   resetRequests PasswordResetRequest[]
+  mitraTurns    MitraTurn[]
 
   @@index([role])
   @@index([state])
@@ -471,4 +472,37 @@ model PasswordResetRequest {
   @@unique([email, status])
   @@index([status])
   @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// What people ask Upanah Mitra.
+//
+// Stored on the same dimensions the rest of the analytics already uses —
+// category, brand, audience, need, budget — so a question typed at the assistant
+// counts as demand alongside a search, instead of sitting in a transcript nobody
+// reads. Off-topic questions are kept too, without an answer: they say what people
+// expect this thing to be, which is worth knowing.
+// ---------------------------------------------------------------------------
+model MitraTurn {
+  id         String   @id @default(cuid())
+  question   String
+  answer     String   @default("")
+  onTopic    Boolean  @default(true)
+  usedAI     Boolean  @default(true)
+  // Set when the question was really about pain, numbness or diabetes. Counted so
+  // we can see how often a shopping box is used to ask a health question.
+  healthFlag Boolean  @default(false)
+  routes     String   @default("")
+  category   String   @default("")
+  brand      String   @default("")
+  audience   String   @default("")
+  need       String   @default("")
+  maxPrice   Int?
+  visitorId  String   @default("")
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([onTopic])
 }

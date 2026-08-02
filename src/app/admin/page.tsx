@@ -13,6 +13,7 @@ import {
   getHealthOutcomes,
   getUsers,
   getResetRequests,
+  getMitraInsight,
   type Window
 } from "@/lib/analytics";
 import { StatTile, BarList, Sparkline } from "@/components/admin/Charts";
@@ -21,7 +22,7 @@ import { MIN_EPISODES_FOR_RATE } from "@/lib/outcomes";
 import { surveyResults, surveyRespondents, MIN_ANSWERS } from "@/lib/buyerSurvey";
 import { ResetRequests } from "@/components/admin/ResetRequests";
 import {
-  ShieldCheck, Users, Search, MessageSquare, TrendingUp, ImageOff, ArrowUpRight, HeartPulse, KeyRound
+  ShieldCheck, Users, Search, MessageSquare, TrendingUp, ImageOff, ArrowUpRight, HeartPulse, KeyRound, Sparkles
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -45,7 +46,7 @@ export default async function AdminPage({
     : 30) as Window;
 
   const [overview, geo, demand, trend, brands, interest, catalog, leads, outcomes,
-         survey, surveyPeople, users, resetRequests] = await Promise.all([
+         survey, surveyPeople, users, resetRequests, mitra] = await Promise.all([
     getOverview(days),
     getGeography(days),
     getDemand(days),
@@ -60,7 +61,8 @@ export default async function AdminPage({
     surveyResults(),
     surveyRespondents(),
     getUsers(),
-    getResetRequests()
+    getResetRequests(),
+    getMitraInsight(days)
   ]);
 
   const engagementRate =
@@ -420,6 +422,68 @@ export default async function AdminPage({
           </tbody>
         </table>
       </div>
+
+      {/* what people ask the assistant */}
+      <h2 className="mt-12 flex items-center gap-2 text-lg font-black text-slate-900">
+        <Sparkles size={18} className="text-indigo-600" /> What people ask Upanah Mitra
+      </h2>
+      <p className="mt-1 text-sm text-slate-500">
+        Questions typed at the assistant, on the same dimensions as searches — so
+        they count as demand rather than sitting in a transcript nobody opens.
+      </p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatTile label="Questions" value={mitra.total} sub={`last ${days} days`} accent />
+        <StatTile label="People asking" value={mitra.people} />
+        <StatTile
+          label="Asked about pain"
+          value={mitra.healthCount}
+          sub="routed to a clinician, not answered"
+        />
+        <StatTile
+          label="Off topic"
+          value={mitra.offTopicCount}
+          sub="declined — what people hoped we'd do"
+        />
+      </div>
+      {mitra.fallbackCount > 0 && (
+        <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900 ring-1 ring-amber-200">
+          {mitra.fallbackCount} of these got the offline keyword fallback rather than
+          a real answer — the model was unreachable at the time. Worth checking the
+          Azure deployment if this number is not near zero.
+        </p>
+      )}
+
+      {mitra.total > 0 && (
+        <>
+          <div className="mt-4 grid gap-4 lg:grid-cols-3">
+            <BarList title="Shoe type asked about" rows={mitra.byCategory} format={cap} empty="Nothing yet" />
+            <BarList title="Brands asked about" rows={mitra.byBrand} empty="No brand named yet" />
+            <BarList title="Men / Women / Kids" rows={mitra.byAudience} format={cap} empty="Not stated yet" />
+          </div>
+          <div className="mt-4 grid gap-4 lg:grid-cols-3">
+            <BarList title="What they need it to do" rows={mitra.byNeed} format={cap} empty="Nothing yet" />
+            <BarList title="Where Mitra sent them" rows={mitra.byRoute} format={(k) => cap(k.replace(/-/g, " "))} empty="Nowhere yet" />
+            <BarList title="Most asked" rows={mitra.topQuestions} empty="No repeats yet" />
+          </div>
+        </>
+      )}
+
+      {mitra.offTopicExamples.length > 0 && (
+        <div className="mt-4 card p-5">
+          <p className="font-bold text-slate-900">Questions Mitra turned down</p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Each one is somebody who expected this to do something it doesn&apos;t.
+            Occasionally that is a feature worth building.
+          </p>
+          <ul className="mt-3 flex flex-wrap gap-2">
+            {mitra.offTopicExamples.map((q, i) => (
+              <li key={i} className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-600">
+                {q.slice(0, 70)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* buyer behaviour — the dataset nobody else has */}
       <h2 className="mt-12 flex items-center gap-2 text-lg font-black text-slate-900">
