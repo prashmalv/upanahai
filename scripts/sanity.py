@@ -376,6 +376,19 @@ if ADMIN_PW:
         st, _, _ = admin.go(f"/admin?days={w}")
         ok(f"dashboard window {w}d", st == 200, f"{st}")
 
+print("\n=== the phone menu exists ===")
+st, home, _ = anon.page("/")
+ok("there is a menu button for small screens", 'aria-label="Open menu"' in home)
+ok("the desktop nav is still desktop-only", "hidden items-center gap-1 lg:flex" in home)
+# Every destination the drawer offers has to resolve. Listed here on purpose: the
+# functional checks all passed while the drawer was visually broken, so this only
+# proves the links go somewhere, not that anyone can see them.
+for path in ["/search", "/search?gender=men", "/search?gender=women", "/search?gender=kids",
+             "/foot-scan", "/size-chart", "/brands", "/health",
+             "/trends", "/survey", "/community"]:
+    st, _, _ = anon.go(path)
+    ok(f"menu destination works: {path}", st == 200, f"{st}")
+
 print("\n=== Upanah Mitra ===")
 st, body, _ = anon.go("/api/mitra", {"question": "I have wide feet, which brands fit?"})
 d = json.loads(body) if st == 200 else {}

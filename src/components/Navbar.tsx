@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { getSession } from "@/lib/auth";
+import { MobileMenu } from "@/components/MobileMenu";
 import { SITE } from "@/lib/seo";
 import {
   Heart, ScanLine, User2, Activity, Star, MessageSquare, ShieldCheck, Ruler,
@@ -66,6 +67,8 @@ export async function Navbar() {
               <User2 size={16} /> Sign in
             </Link>
           )}
+          {/* On phones this is the only way to most of the site. */}
+          <MobileMenu isAdmin={session?.role === "admin"} />
         </div>
       </div>
     </header>
